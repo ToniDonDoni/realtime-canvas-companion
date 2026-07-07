@@ -10,7 +10,7 @@ One-page browser demo for a realtime AI voice companion that can listen, speak, 
 - Mock realtime transport for deterministic tests without an OpenAI key.
 - Live OpenAI mode using WebRTC SDP through a backend endpoint.
 - Canvas frame description bridge: browser sends canvas data URL to `/api/vision/describe`; backend returns a concise summary; the summary is sent into the realtime session.
-- Playwright E2E tests that drive the same user journey: open app, see controls, call, hear/observe greeting, draw, wait for canvas send, observe assistant comment, stop.
+- Playwright E2E tests that drive the same user journey: open app, see controls, call, hear/observe greeting, draw, wait for canvas send, observe assistant comment, verify newest-first event ordering, verify interval cadence changes, stop.
 - SDDTDD artifacts under `.sddtdd_skill/`.
 
 ## Run in mock mode
@@ -67,3 +67,20 @@ Browser controls -> app state -> realtime transport
 ## Important live-mode caveat
 
 The realtime session receives text scene summaries, not raw canvas pixels. Raw canvas pixels are handled by the backend vision endpoint first. This keeps the realtime voice connection focused on low-latency audio while still letting the companion comment on visual state.
+
+
+## Event log and interval behavior
+
+New transcript/event entries are prepended, so the latest event is shown at the top of the list. Canvas-send events include the active interval, for example `canvas frame sent (interval: 1000ms)`, and interval changes are logged as `canvas send interval changed to 1000ms`.
+
+The E2E suite verifies that a 10-second interval does not send a frame within 1.5 seconds, then changing the selector to 1 second causes a canvas frame to be sent and commented on.
+
+## Canvas editing controls
+
+The canvas now has three visible editing controls:
+
+- **Draw**: default mode; hold the mouse button and move to draw black strokes.
+- **Erase**: hold the mouse button and move over existing strokes to erase them.
+- **Clear**: clears the whole canvas immediately.
+
+The app logs mode changes and clear actions at the top of the transcript/event list. These controls are covered by browser E2E tests that drive the visible UI and inspect the canvas pixels after real pointer gestures.

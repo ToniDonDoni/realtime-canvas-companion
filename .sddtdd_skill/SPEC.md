@@ -67,6 +67,29 @@ AC-FR004-2:
 - Boundary: browser end-to-end with audio instrumentation.
 - Not enough: a mocked data object exists.
 
+### FR-006 Newest-first event log and observable cadence changes
+
+AC-FR006-1:
+- Given: the app is open and events are being produced.
+- When: a new event is logged.
+- Then: the newest event appears at the top of the transcript/event list.
+- Boundary: browser end-to-end.
+- Not enough: a log array is sorted internally without proving the rendered list order.
+
+AC-FR006-2:
+- Given: the app is connected, the canvas has changed, and the interval is set to 10 seconds.
+- When: less than the 10 second interval elapses.
+- Then: no canvas frame is sent.
+- Boundary: browser end-to-end with mocked vision endpoint.
+- Not enough: asserting only that the select value changed.
+
+AC-FR006-3:
+- Given: the app is connected, the canvas has changed, and the interval is changed to 1 second.
+- When: one selected interval elapses.
+- Then: a canvas frame is sent, the visible log identifies the 1000ms interval, and the assistant comment becomes the newest visible event.
+- Boundary: browser end-to-end with mocked vision endpoint.
+- Not enough: a timer function exists or an internal variable changes.
+
 ### FR-005 Live/OpenAI mode
 
 AC-FR005-1:
@@ -82,3 +105,33 @@ AC-FR005-2:
 - Then: it uses the configured vision model to return a concise scene summary that the browser sends into the realtime data channel.
 - Boundary: backend integration with mocked fetch for automated tests; live manual verification with a real key.
 - Not enough: the browser sends a data URL only.
+
+### FR-007 Draw, erase, and clear canvas controls
+
+AC-FR007-1:
+- Given: the app is opened in a browser.
+- When: the first screen is displayed.
+- Then: the user can visibly identify Draw mode, Erase mode, and Clear controls near the canvas.
+- Boundary: browser end-to-end.
+- Not enough: mode variables exist, canvas functions exist, or source text contains labels.
+
+AC-FR007-2:
+- Given: Draw mode is selected.
+- When: the user presses and drags on the canvas.
+- Then: visible/non-empty drawing content is produced on the canvas through real pointer actions.
+- Boundary: browser end-to-end using real pointer events and canvas pixel inspection.
+- Not enough: calling a drawing helper directly or asserting an internal changed flag only.
+
+AC-FR007-3:
+- Given: the canvas contains visible drawing content and Erase mode is selected.
+- When: the user presses and drags over existing content.
+- Then: the visible/non-empty drawing content is reduced on the canvas through real pointer actions.
+- Boundary: browser end-to-end using real pointer events and canvas pixel inspection.
+- Not enough: an erase function exists or an internal tool mode changes.
+
+AC-FR007-4:
+- Given: the canvas contains visible drawing content.
+- When: the user activates the visible Clear control.
+- Then: the canvas becomes empty/cleared and the event log records that the canvas was cleared.
+- Boundary: browser end-to-end using visible control activation and canvas pixel inspection.
+- Not enough: directly calling clearCanvas or only checking that a Clear button exists.

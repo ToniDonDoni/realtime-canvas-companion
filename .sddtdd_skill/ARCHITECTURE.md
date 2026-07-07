@@ -22,3 +22,7 @@
 ## Test boundaries
 
 Primary test boundary is browser E2E with Playwright. Tests install browser-level microphone/WebRTC/audio instrumentation before app startup, then drive visible controls and pointer events.
+
+## Canvas editing modes
+
+The rendered app owns a visible Draw/Erase mode selector and Clear button. `src/canvas.js` exposes a canvas controller with `setMode(mode)`, `clear()`, `hasChanged()`, `markSent()`, and `capture()`. Browser E2E tests must drive the visible controls and inspect canvas pixels after pointer gestures.

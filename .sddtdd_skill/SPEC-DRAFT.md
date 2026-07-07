@@ -12,3 +12,11 @@ Build a browser one-page app with:
 - voice and streaming behavior;
 - mock mode for tests/no key and live mode for OpenAI with a key;
 - produce spec first, then E2E user-journey tests, then implementation.
+
+## Raw user input 2026-07-07 ADDITION
+
+Change transcript/event log ordering so newest entries appear at the top. Make canvas-send cadence visible and testable, and verify changing the interval from the UI changes when canvas frames are sent.
+
+## Raw user input 2026-07-07 ADDITION
+
+Add two canvas interaction modes: Draw and Erase, with a visible switch between them. Add a visible Clear button that clears the whole canvas. Write tests first, then implementation.

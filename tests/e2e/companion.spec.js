@@ -49,6 +49,7 @@ test('AC-FR002 call connects, greets with audio, and stop disconnects', async ({
   await expect(page.locator('#statusBadge')).toHaveText('connected');
   await expect(page.getByRole('list')).toContainText('connected with model gpt-realtime-2.1');
   await expect(page.getByRole('list')).toContainText('assistant: Привет');
+  await expect(page.locator('#eventLog li').first()).toContainText('assistant: Привет');
   await expect.poll(() => page.evaluate(() => window.__audioEvents)).toContain('oscillator-start');
   await page.getByRole('button', { name: 'Stop' }).click();
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
@@ -71,8 +72,93 @@ test('AC-FR003/004 drawing sends canvas frame on selected cadence and assistant 
   await page.mouse.up();
 
   await expect(page.getByRole('list')).toContainText('drawing changed');
-  await expect(page.getByRole('list')).toContainText('canvas frame sent', { timeout: 2500 });
+  await expect(page.getByRole('list')).toContainText('canvas frame sent (interval: 1000ms)', { timeout: 2500 });
   await expect(page.getByRole('list')).toContainText('sent: scene_summary.sent');
   await expect(page.getByRole('list')).toContainText('assistant: Вижу рисунок');
   await expect.poll(() => page.evaluate(() => window.__audioEvents.filter(e => e === 'oscillator-start').length)).toBeGreaterThanOrEqual(2);
+});
+
+
+test('AC-FR005 newest log entries appear first and interval changes affect canvas send cadence', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  let visionDescribeRequests = 0;
+  await page.route('**/api/vision/describe', async (route) => {
+    visionDescribeRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ summary: 'Тестовый рисунок получен.' }),
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Canvas send interval').selectOption('10000');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+
+  const canvas = page.getByLabel('Drawing canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + 60, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 160, box.y + 120, { steps: 4 });
+  await page.mouse.up();
+
+  await expect(page.locator('#eventLog li').first()).toContainText('drawing changed');
+  await page.waitForTimeout(1500);
+  expect(visionDescribeRequests).toBe(0);
+
+  await page.getByLabel('Canvas send interval').selectOption('1000');
+  await expect(page.locator('#eventLog li').first()).toContainText('canvas send interval changed to 1000ms');
+  await expect(page.getByRole('list')).toContainText('canvas frame sent (interval: 1000ms)', { timeout: 2500 });
+  await expect.poll(() => visionDescribeRequests).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('#eventLog li').first()).toContainText('assistant: Вижу рисунок');
+});
+
+async function nonEmptyCanvasPixelCount(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('#drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let count = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 0) count += 1;
+    }
+    return count;
+  });
+}
+
+async function drawStroke(page, fromX, fromY, toX, toY) {
+  const canvas = page.getByLabel('Drawing canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + fromX, box.y + fromY);
+  await page.mouse.down();
+  await page.mouse.move(box.x + toX, box.y + toY, { steps: 12 });
+  await page.mouse.up();
+}
+
+test('AC-FR007 draw, erase, and clear controls affect the visible canvas through user actions', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await page.goto('/');
+
+  await expect(page.getByRole('radio', { name: 'Draw' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Erase' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Draw' })).toBeChecked();
+
+  await drawStroke(page, 80, 80, 360, 230);
+  const afterDraw = await nonEmptyCanvasPixelCount(page);
+  expect(afterDraw).toBeGreaterThan(0);
+  await expect(page.locator('#eventLog li').first()).toContainText('drawing changed');
+
+  await page.getByRole('radio', { name: 'Erase' }).check();
+  await expect(page.locator('#eventLog li').first()).toContainText('canvas mode changed to erase');
+  await drawStroke(page, 80, 80, 360, 230);
+  const afterErase = await nonEmptyCanvasPixelCount(page);
+  expect(afterErase).toBeLessThan(afterDraw);
+
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.locator('#eventLog li').first()).toContainText('canvas cleared');
+  await expect.poll(() => nonEmptyCanvasPixelCount(page)).toBe(0);
 });

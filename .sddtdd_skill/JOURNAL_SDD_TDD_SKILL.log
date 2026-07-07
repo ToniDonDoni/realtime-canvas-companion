@@ -5,3 +5,12 @@
 2026-07-07T00:00:04Z RED Authored browser E2E tests before implementation.
 2026-07-07T00:00:05Z GREEN Implemented minimal app/server to satisfy tests.
 2026-07-07T00:00:06Z REGRESSION First Playwright run failed because bundled browser was unavailable and system Chromium policy blocked all URLs. Adjusted Playwright to use /usr/bin/chromium; temporarily relaxed sandbox Chromium URL policy only to execute tests; restored policy afterward. E2E suite passed in mock mode: 3 passed.
+2026-07-07 ADDITION: Appended user requirement for newest-first transcript log and testable interval cadence.
+2026-07-07 RED: Added E2E expectations for newest-first log ordering and interval-driven canvas sending cadence.
+2026-07-07 GREEN: Updated log insertion to prepend entries, logged canvas send interval in send events, logged interval change events, and verified 4 Playwright E2E tests passed.
+2026-07-07T00:00:00Z USER_INPUT_ADDITION Captured Draw/Erase mode switch and Clear button requirement as append-only SPEC-DRAFT addition.
+2026-07-07T00:00:01Z SPEC_UPDATE Added FR-007 acceptance criteria for visible controls, draw, erase, and clear behavior at browser E2E boundary.
+2026-07-07T00:00:02Z RED_TEST_ADDED Added Playwright E2E test for Draw/Erase/Clear visible controls and canvas pixel effects before implementation.
+2026-07-07T00:00:03Z GREEN_IMPLEMENTATION Implemented visible Draw/Erase radio controls, Clear button, canvas erase mode, and full-canvas clear behavior.
+2026-07-07T00:00:04Z REGRESSION npm test -- --reporter=line passed: 5 browser E2E tests.
+2026-07-07T00:00:05Z PACKAGE Updated README and packaged realtime-canvas-companion-draw-erase-clear.zip.

@@ -5,6 +5,8 @@ const els = {
   model: document.querySelector('#modelSelect'),
   interval: document.querySelector('#intervalSelect'),
   call: document.querySelector('#callButton'),
+  clearCanvas: document.querySelector('#clearCanvasButton'),
+  canvasTools: document.querySelectorAll('input[name="canvasTool"]'),
   mode: document.querySelector('#modeBadge'),
   status: document.querySelector('#statusBadge'),
   log: document.querySelector('#eventLog'),
@@ -21,7 +23,11 @@ let connected = false;
 function log(message) {
   const li = document.createElement('li');
   li.textContent = message;
-  els.log.appendChild(li);
+  els.log.prepend(li);
+}
+
+function selectedIntervalMs() {
+  return Number(els.interval.value);
 }
 
 async function loadConfig() {
@@ -82,11 +88,11 @@ async function describeCanvasFrame(imageDataUrl) {
 
 function scheduleCanvasSending() {
   window.clearInterval(sendTimer);
-  const interval = Number(els.interval.value);
+  const interval = selectedIntervalMs();
   sendTimer = window.setInterval(async () => {
     if (!connected || !canvasState.hasChanged()) return;
     const imageDataUrl = canvasState.capture();
-    log('canvas frame sent');
+    log(`canvas frame sent (interval: ${interval}ms)`);
     const summary = await describeCanvasFrame(imageDataUrl);
     canvasState.markSent();
     await transport.sendSceneSummary(summary);
@@ -97,8 +103,22 @@ els.call.addEventListener('click', async () => {
   if (connected || els.status.textContent === 'connecting') await stopCall();
   else await startCall();
 });
-els.interval.addEventListener('change', () => { if (connected) scheduleCanvasSending(); });
+els.interval.addEventListener('change', () => {
+  log(`canvas send interval changed to ${selectedIntervalMs()}ms`);
+  if (connected) scheduleCanvasSending();
+});
 
 canvasState = createDrawingCanvas(els.canvas, () => log('drawing changed'));
+for (const tool of els.canvasTools) {
+  tool.addEventListener('change', () => {
+    if (!tool.checked) return;
+    canvasState.setMode(tool.value);
+    log(`canvas mode changed to ${tool.value}`);
+  });
+}
+els.clearCanvas.addEventListener('click', () => {
+  canvasState.clear();
+  log('canvas cleared');
+});
 await loadConfig();
 log('app ready');

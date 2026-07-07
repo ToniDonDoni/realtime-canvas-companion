@@ -4,6 +4,10 @@ main { max-width: 920px; margin: 0 auto; padding: 24px; }
 label { display: grid; gap: 4px; font-size: 14px; }
 select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #555; }
 button { cursor: pointer; min-width: 92px; }
+fieldset.tool-controls { display: flex; gap: 10px; align-items: center; border: 1px solid #555; border-radius: 8px; padding: 6px 10px 8px; margin: 0; }
+fieldset.tool-controls legend { padding: 0 4px; font-size: 14px; }
+.inline-control { display: flex; grid-template: none; gap: 6px; align-items: center; font-size: 16px; }
+.inline-control input { margin: 0; }
 #modeBadge, #statusBadge { padding: 8px 10px; border: 1px solid #555; border-radius: 8px; background: #1e2027; }
 canvas { width: 100%; max-width: 640px; height: auto; border: 2px solid #888; border-radius: 12px; background: white; display: block; touch-action: none; }
 .transcript { margin-top: 18px; }
