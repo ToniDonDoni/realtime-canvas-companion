@@ -20,6 +20,9 @@
             <option value="10000">Every 10 seconds</option>
           </select>
         </label>
+        <label>Vision model
+          <select id="visionModelSelect" aria-label="Vision model"></select>
+        </label>
         <fieldset class="tool-controls" aria-label="Canvas tool">
           <legend>Canvas tool</legend>
           <label class="inline-control"><input type="radio" name="canvasTool" value="draw" checked /> Draw</label>
@@ -28,6 +31,7 @@
         <button id="clearCanvasButton" type="button">Clear</button>
         <button id="callButton" type="button">Call</button>
         <span id="modeBadge" role="status">mode: loading</span>
+        <span id="versionBadge">version: loading</span>
         <span id="statusBadge">disconnected</span>
       </section>
       <canvas id="drawingCanvas" width="640" height="360" aria-label="Drawing canvas"></canvas>

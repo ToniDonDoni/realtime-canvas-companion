@@ -66,6 +66,10 @@ export class OpenAIWebRTCTransport extends EventTarget {
   handleEvent(raw) {
     let event;
     try { event = JSON.parse(raw); } catch { return; }
+    if (event.type === 'error' || event.error) {
+      const message = event.error?.message || event.message || raw;
+      this.dispatchEvent(new CustomEvent('assistant_message', { detail: { text: `OpenAI event error: ${message}` } }));
+    }
     if (event.type?.includes('transcript') && event.transcript) {
       this.dispatchEvent(new CustomEvent('assistant_message', { detail: { text: event.transcript } }));
     }

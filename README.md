@@ -108,3 +108,29 @@ Entries are unnumbered and use a local timestamp prefix:
 ```
 
 `drawing changed` means the local canvas changed. `canvas frame sent` is the interval-driven send event; change the Canvas send interval control to verify cadence.
+
+## Model selectors
+
+The app has two independent model selectors:
+
+- **Model** controls the realtime voice session model. When the user presses **Call**, the selected value is sent to `/api/realtime/session?model=...`.
+- **Vision model** controls the model used by `/api/vision/describe` for canvas image summaries. The selected value is included in the canvas describe request body as `model`.
+
+Default low-cost live configuration:
+
+```bash
+OPENAI_REALTIME_MODEL=gpt-realtime-2.1-mini
+OPENAI_VISION_MODEL=gpt-5.4-nano
+```
+
+Switch Vision model to `gpt-5.4-mini` if `gpt-5.4-nano` is too weak for the drawing quality you need. Keep the canvas interval at 5–10 seconds unless you intentionally want frequent paid vision requests.
+
+## Paste image into canvas
+
+Copy an image to the clipboard and press paste (`Cmd+V` on macOS, `Ctrl+V` elsewhere) while the app is open. The canvas is replaced with the pasted image. The image is scaled with aspect-fit behavior: its proportions are preserved, and unused canvas space remains white.
+
+
+## App version visibility
+
+The server reads the version from `package.json` and exposes it through `/api/config`.
+The browser displays it as `version: ...`, logs it to the browser console, and writes `app version: ...` into the Transcript / events list. This makes it easy to verify which extracted archive/build is actually running.

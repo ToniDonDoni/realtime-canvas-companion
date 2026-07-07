@@ -24,3 +24,7 @@ Add two canvas interaction modes: Draw and Erase, with a visible switch between 
 ## Raw user input 2026-07-07 ADDITION
 
 Change the transcript/event log so it does not show numeric ordering. Each event should show a timestamp and event text. Newest events must appear at the top of the visible log.
+
+ADDITION: User requires realtime model switching to be verified and a visible vision model selector added. The vision selector must offer the low-cost vision choices previously discussed, and tests must be written before implementation. The selected realtime model must be used when opening a live session. The selected vision model must be used when sending canvas frames for description.
+
+ADDITION: The user wants to paste an image from the clipboard into the canvas using the normal paste hotkey. When pasted, the canvas should be replaced by the image, resized to fit the canvas while preserving proportions. If the image is narrower than the canvas, white side margins should remain. If it is shorter, white top/bottom margins should remain. This must be covered by an end-to-end user journey test before implementation.

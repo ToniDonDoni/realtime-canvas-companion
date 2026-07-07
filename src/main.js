@@ -4,10 +4,12 @@ import { createRealtimeTransport } from './realtime.js';
 const els = {
   model: document.querySelector('#modelSelect'),
   interval: document.querySelector('#intervalSelect'),
+  visionModel: document.querySelector('#visionModelSelect'),
   call: document.querySelector('#callButton'),
   clearCanvas: document.querySelector('#clearCanvasButton'),
   canvasTools: document.querySelectorAll('input[name="canvasTool"]'),
   mode: document.querySelector('#modeBadge'),
+  version: document.querySelector('#versionBadge'),
   status: document.querySelector('#statusBadge'),
   log: document.querySelector('#eventLog'),
   canvas: document.querySelector('#drawingCanvas'),
@@ -40,6 +42,9 @@ async function loadConfig() {
   const res = await fetch('/api/config');
   config = await res.json();
   els.mode.textContent = `mode: ${config.mode}`;
+  els.version.textContent = `version: ${config.version}`;
+  console.info(`[app] version=${config.version}`);
+  log(`app version: ${config.version}`);
   els.model.innerHTML = '';
   for (const model of config.realtimeModels) {
     const option = document.createElement('option');
@@ -48,6 +53,15 @@ async function loadConfig() {
     if (model === config.defaultRealtimeModel) option.selected = true;
     els.model.appendChild(option);
   }
+  els.visionModel.innerHTML = '';
+  for (const model of config.visionModels) {
+    const option = document.createElement('option');
+    option.value = model;
+    option.textContent = model;
+    if (model === config.defaultVisionModel) option.selected = true;
+    els.visionModel.appendChild(option);
+  }
+  if (config.keyStatus) log(`server key status: ${config.keyStatus}`);
   const matching = [...els.interval.options].find(o => Number(o.value) === config.defaultCanvasIntervalMs);
   if (matching) matching.selected = true;
 }
@@ -75,7 +89,15 @@ async function startCall() {
   transport = createRealtimeTransport({ mode: config.mode, model: els.model.value, audioElement: els.audio });
   wireTransport(transport);
   els.status.textContent = 'connecting';
-  await transport.connect();
+  try {
+    await transport.connect();
+  } catch (error) {
+    connected = false;
+    els.status.textContent = 'connection failed';
+    els.call.textContent = 'Call';
+    log(`realtime error: ${error.message || error}`);
+    await transport?.disconnect();
+  }
 }
 
 async function stopCall() {
@@ -86,7 +108,7 @@ async function describeCanvasFrame(imageDataUrl) {
   const res = await fetch('/api/vision/describe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageDataUrl }),
+    body: JSON.stringify({ imageDataUrl, model: els.visionModel.value }),
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()).summary;
@@ -99,9 +121,15 @@ function scheduleCanvasSending() {
     if (!connected || !canvasState.hasChanged()) return;
     const imageDataUrl = canvasState.capture();
     log(`canvas frame sent (interval: ${interval}ms)`);
-    const summary = await describeCanvasFrame(imageDataUrl);
-    canvasState.markSent();
-    await transport.sendSceneSummary(summary);
+    try {
+      const summary = await describeCanvasFrame(imageDataUrl);
+      log(`vision summary: ${summary}`);
+      canvasState.markSent();
+      await transport.sendSceneSummary(summary);
+    } catch (error) {
+      log(`vision error: ${error.message || error}`);
+      console.error('vision error', error);
+    }
   }, interval);
 }
 
@@ -113,6 +141,12 @@ els.interval.addEventListener('change', () => {
   log(`canvas send interval changed to ${selectedIntervalMs()}ms`);
   if (connected) scheduleCanvasSending();
 });
+els.model.addEventListener('change', () => {
+  log(`realtime model selected: ${els.model.value}`);
+});
+els.visionModel.addEventListener('change', () => {
+  log(`vision model selected: ${els.visionModel.value}`);
+});
 
 canvasState = createDrawingCanvas(els.canvas, () => log('drawing changed'));
 for (const tool of els.canvasTools) {
@@ -122,9 +156,26 @@ for (const tool of els.canvasTools) {
     log(`canvas mode changed to ${tool.value}`);
   });
 }
+
+async function handlePaste(event) {
+  const items = [...(event.clipboardData?.items || [])];
+  const imageItem = items.find((item) => item.type.startsWith('image/'));
+  if (!imageItem) return;
+  event.preventDefault();
+  try {
+    const blob = imageItem.getAsFile();
+    await canvasState.pasteImage(blob);
+    log('image pasted into canvas');
+  } catch (error) {
+    log(`paste image error: ${error.message || error}`);
+    console.error('paste image error', error);
+  }
+}
+
 els.clearCanvas.addEventListener('click', () => {
   canvasState.clear();
   log('canvas cleared');
 });
+window.addEventListener('paste', handlePaste);
 await loadConfig();
 log('app ready');

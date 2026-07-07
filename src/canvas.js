@@ -22,6 +22,50 @@ export function createDrawingCanvas(canvas, onDraw) {
     onDraw?.();
   }
 
+  function drawImageAspectFit(image) {
+    const canvasRatio = canvas.width / canvas.height;
+    const imageRatio = image.width / image.height;
+    let drawWidth;
+    let drawHeight;
+    if (imageRatio > canvasRatio) {
+      drawWidth = canvas.width;
+      drawHeight = canvas.width / imageRatio;
+    } else {
+      drawHeight = canvas.height;
+      drawWidth = canvas.height * imageRatio;
+    }
+    const drawX = (canvas.width - drawWidth) / 2;
+    const drawY = (canvas.height - drawHeight) / 2;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    ctx.restore();
+    markChanged();
+  }
+
+  async function pasteImage(blob) {
+    if (!blob || !blob.type?.startsWith('image/')) {
+      throw new Error('Clipboard item is not an image.');
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const image = new Image();
+      image.decoding = 'async';
+      const loaded = new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Could not load pasted image.'));
+      });
+      image.src = url;
+      await loaded;
+      drawImageAspectFit(image);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   function strokeTo(p) {
     if (mode === 'erase') {
       ctx.save();
@@ -74,5 +118,6 @@ export function createDrawingCanvas(canvas, onDraw) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       markChanged();
     },
+    pasteImage,
   };
 }

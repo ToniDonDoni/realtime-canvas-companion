@@ -47,6 +47,8 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
+  await expect(page.getByText('version: 0.2.0')).toBeVisible();
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.0');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
@@ -197,4 +199,169 @@ test('AC-FR007 draw, erase, and clear controls affect the visible canvas through
   await page.getByRole('button', { name: 'Clear' }).click();
   await expect(page.locator('#eventLog li').first()).toContainText('canvas cleared');
   await expect.poll(() => nonEmptyCanvasPixelCount(page)).toBe(0);
+});
+
+
+test('AC-FR012 app version is visible on screen and in the event log', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await page.goto('/');
+
+  await expect(page.getByText('version: 0.2.0')).toBeVisible();
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.0');
+});
+
+async function installFakeWebRTC(page) {
+  await page.addInitScript(() => {
+    class FakeDataChannel extends EventTarget {
+      constructor() {
+        super();
+        this.readyState = 'open';
+        this.sent = [];
+      }
+      send(value) { this.sent.push(value); }
+      close() { this.readyState = 'closed'; }
+    }
+    class FakeRTCPeerConnection extends EventTarget {
+      constructor() {
+        super();
+        this.localDescription = null;
+        this.remoteDescription = null;
+      }
+      addTrack() {}
+      createDataChannel() {
+        this.dc = new FakeDataChannel();
+        return this.dc;
+      }
+      async createOffer() { return { type: 'offer', sdp: 'v=0\r\ns=fake-offer\r\n' }; }
+      async setLocalDescription(offer) { this.localDescription = offer; }
+      async setRemoteDescription(answer) { this.remoteDescription = answer; }
+      close() {}
+    }
+    window.RTCPeerConnection = FakeRTCPeerConnection;
+    navigator.mediaDevices = {
+      getUserMedia: async () => ({
+        getTracks: () => [{ stop() {} }],
+      }),
+    };
+  });
+}
+
+test('AC-FR009 realtime model selector is used when opening a live WebRTC session', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await installFakeWebRTC(page);
+  let requestedRealtimeModel;
+
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'live',
+        version: '0.2.0',
+        realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
+        visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
+        defaultRealtimeModel: 'gpt-realtime-2.1-mini',
+        defaultVisionModel: 'gpt-5.4-nano',
+        defaultVoice: 'marin',
+        defaultCanvasIntervalMs: 5000,
+        keyStatus: 'test-key',
+      }),
+    });
+  });
+  await page.route('**/api/realtime/session**', async (route) => {
+    requestedRealtimeModel = new URL(route.request().url()).searchParams.get('model');
+    await route.fulfill({ status: 201, contentType: 'application/sdp', body: 'v=0\r\ns=fake-answer\r\n' });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Model').selectOption('gpt-realtime-2.1');
+  await expect(page.locator('#eventLog li').first()).toContainText('realtime model selected: gpt-realtime-2.1');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+  expect(requestedRealtimeModel).toBe('gpt-realtime-2.1');
+});
+
+test('AC-FR010 vision model selector is used for canvas describe requests', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  let requestedVisionModel;
+
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'mock',
+        version: '0.2.0',
+        realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
+        visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
+        defaultRealtimeModel: 'gpt-realtime-2.1-mini',
+        defaultVisionModel: 'gpt-5.4-nano',
+        defaultVoice: 'marin',
+        defaultCanvasIntervalMs: 1000,
+        keyStatus: 'mock',
+      }),
+    });
+  });
+  await page.route('**/api/vision/describe', async (route) => {
+    requestedVisionModel = route.request().postDataJSON().model;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ summary: `summary from ${requestedVisionModel}` }),
+    });
+  });
+
+  await page.goto('/');
+  await expect(page.getByLabel('Vision model')).toBeVisible();
+  await page.getByLabel('Vision model').selectOption('gpt-5.4-mini');
+  await expect(page.locator('#eventLog li').first()).toContainText('vision model selected: gpt-5.4-mini');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+  await drawStroke(page, 90, 90, 250, 150);
+  await expect(page.getByRole('list')).toContainText('canvas frame sent (interval: 1000ms)', { timeout: 2500 });
+  await expect.poll(() => requestedVisionModel).toBe('gpt-5.4-mini');
+  await expect(page.getByRole('list')).toContainText('vision summary: summary from gpt-5.4-mini');
+});
+
+test('AC-FR011 pasting an image replaces the canvas with aspect-fit content and white side margins', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5179' });
+  await page.goto('/');
+
+  await drawStroke(page, 40, 40, 600, 320);
+  const afterDraw = await nonEmptyCanvasPixelCount(page);
+  expect(afterDraw).toBeGreaterThan(0);
+
+  await page.evaluate(async () => {
+    const source = document.createElement('canvas');
+    source.width = 100;
+    source.height = 300;
+    const ctx = source.getContext('2d');
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, source.width, source.height);
+    const blob = await new Promise((resolve) => source.toBlob(resolve, 'image/png'));
+    const item = new ClipboardItem({ 'image/png': blob });
+    await navigator.clipboard.write([item]);
+  });
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+  await expect(page.locator('#eventLog li').first()).toContainText('image pasted into canvas');
+
+  const samples = await page.evaluate(() => {
+    const canvas = document.querySelector('#drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    const pixel = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+    return {
+      leftCenter: pixel(20, Math.floor(canvas.height / 2)),
+      center: pixel(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2)),
+      rightCenter: pixel(canvas.width - 20, Math.floor(canvas.height / 2)),
+    };
+  });
+
+  expect(samples.leftCenter).toEqual([255, 255, 255, 255]);
+  expect(samples.rightCenter).toEqual([255, 255, 255, 255]);
+  expect(samples.center[0]).toBeGreaterThan(220);
+  expect(samples.center[1]).toBeLessThan(40);
+  expect(samples.center[2]).toBeLessThan(40);
+  expect(samples.center[3]).toBe(255);
 });

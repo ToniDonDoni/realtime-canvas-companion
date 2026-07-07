@@ -151,3 +151,30 @@ AC-FR008-2:
 - Then: the later event appears as the first/top visible log entry.
 - Boundary: browser end-to-end with visible log ordering assertions.
 - Not enough: array order changes without proving visible rendered order.
+
+## ADDITION FR-009 Realtime and vision model selectors
+
+AC-FR009-1:
+- Given: the app is opened in live mode and the visible realtime model selector contains available realtime models.
+- When: the user selects a realtime model and starts a call through the visible Call button.
+- Then: the app opens the realtime session using the selected model in the session request.
+- Boundary: browser end-to-end with a fake WebRTC/browser boundary and intercepted session request.
+- Not enough: a model option exists, a variable changes internally, or a unit test calls transport code directly.
+
+AC-FR010-1:
+- Given: the app is opened and the visible vision model selector contains low-cost vision models.
+- When: the user selects a vision model, starts a call, draws on the canvas, and the canvas send cadence fires.
+- Then: the `/api/vision/describe` request includes the selected vision model and the resulting summary appears in the event log.
+- Boundary: browser end-to-end with intercepted vision request.
+- Not enough: a select element exists, config contains model names, or a request helper is called directly.
+
+## FR-011 Paste image into canvas
+
+A user can paste an image from the system clipboard into the app with the normal paste shortcut. The current canvas content is replaced. The pasted image is aspect-fit scaled into the canvas while preserving proportions. Empty canvas bands remain white.
+
+AC-FR011-1:
+- Given: the browser app is open and the user has an image in the clipboard.
+- When: the user presses the paste shortcut.
+- Then: the canvas is replaced with the pasted image, scaled to fit while preserving aspect ratio, and white margins are visible where the image does not fill the canvas.
+- Boundary: browser end-to-end.
+- Not enough: a paste handler exists, an image helper exists, or a unit test calls a draw function directly.
