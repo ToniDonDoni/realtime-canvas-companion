@@ -30,11 +30,41 @@ jobs:
           echo "userconfig=$(npm config get userconfig)"
           echo "globalconfig=$(npm config get globalconfig)"
           echo "registry=$(npm config get registry)"
+          echo "runner.temp=${{ runner.temp }}"
+          echo "project_npmrc_present=$([ -f .npmrc ] && echo yes || echo no)"
+          echo "user_npmrc_present=$([ -f "$HOME/.npmrc" ] && echo yes || echo no)"
+          if [ -f .npmrc ] && grep -qiE 'artifactory|applied-caas-gateway1|internal\\.api\\.openai\\.org' .npmrc; then
+            echo "project_npmrc_internal_registry=yes"
+          else
+            echo "project_npmrc_internal_registry=no"
+          fi
+          if [ -f "$HOME/.npmrc" ] && grep -qiE 'artifactory|applied-caas-gateway1|internal\\.api\\.openai\\.org' "$HOME/.npmrc"; then
+            echo "user_npmrc_internal_registry=yes"
+          else
+            echo "user_npmrc_internal_registry=no"
+          fi
+          if [ -f "$HOME/.npmrc" ] && grep -qiE 'registry\\.npmjs\\.org' "$HOME/.npmrc"; then
+            echo "user_npmrc_public_registry=yes"
+          else
+            echo "user_npmrc_public_registry=no"
+          fi
+          if [ -f .npmrc ] && grep -qiE 'registry\\.npmjs\\.org' .npmrc; then
+            echo "project_npmrc_public_registry=yes"
+          else
+            echo "project_npmrc_public_registry=no"
+          fi
+          echo "--- lockfile internal mirror matches ---"
+          if grep -n "packages\\.applied-caas-gateway1\\.internal" package-lock.json; then
+            echo "internal mirror URLs still present in package-lock.json"
+            exit 1
+          else
+            echo "none"
+          fi
           node -e 'for (const key of Object.keys(process.env).sort()) { if (/^(NPM|NODE)_/.test(key) || /^npm_config_/i.test(key)) { const lower = key.toLowerCase(); const sensitive = /(token|auth|password|secret)/.test(lower); console.log(`${key}=${sensitive ? "***" : process.env[key]}`); } }'
 
       - name: Install dependencies
         env:
-          NPM_CONFIG_CACHE: /tmp/npm-cache
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-cache
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org
         run: npm ci --verbose --no-audit --no-fund --foreground-scripts
 
