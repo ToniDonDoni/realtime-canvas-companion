@@ -47,8 +47,8 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.4');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.4');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.5');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.5');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
@@ -206,8 +206,8 @@ test('AC-FR012 app version is visible on screen and in the event log', async ({ 
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
 
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.4');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.4');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.5');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.5');
 });
 
 async function installFakeWebRTC(page) {
@@ -226,6 +226,7 @@ async function installFakeWebRTC(page) {
         super();
         this.localDescription = null;
         this.remoteDescription = null;
+        window.__lastFakePeerConnection = this;
       }
       addTrack() {}
       createDataChannel() {
@@ -238,11 +239,14 @@ async function installFakeWebRTC(page) {
       close() {}
     }
     window.RTCPeerConnection = FakeRTCPeerConnection;
-    navigator.mediaDevices = {
-      getUserMedia: async () => ({
-        getTracks: () => [{ stop() {} }],
-      }),
-    };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: async () => ({
+          getTracks: () => [{ stop() {} }],
+        }),
+      },
+    });
   });
 }
 
@@ -257,7 +261,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.4',
+        version: '0.2.5',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -281,6 +285,55 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
   expect(requestedRealtimeModel).toBe('gpt-realtime-2.1');
 });
 
+test('AC-FR014 Realtime server events are visible in the event log', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await installFakeWebRTC(page);
+
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'live',
+        version: '0.2.5',
+        realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
+        visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
+        defaultRealtimeModel: 'gpt-realtime-2.1-mini',
+        defaultVisionModel: 'gpt-5.4-nano',
+        defaultVoice: 'marin',
+        defaultCanvasIntervalMs: 5000,
+        keyStatus: 'test-key',
+      }),
+    });
+  });
+  await page.route('**/api/realtime/session**', async (route) => {
+    await route.fulfill({ status: 201, contentType: 'application/sdp', body: 'v=0\r\ns=fake-answer\r\n' });
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+
+  await page.evaluate(() => {
+    window.__lastFakePeerConnection.dc.onmessage({
+      data: JSON.stringify({
+        type: 'input_audio_buffer.speech_started',
+        event_id: 'evt_speech_started_test',
+      }),
+    });
+    window.__lastFakePeerConnection.dc.onmessage({
+      data: JSON.stringify({
+        type: 'input_audio_buffer.speech_stopped',
+        event_id: 'evt_speech_stopped_test',
+      }),
+    });
+  });
+
+  await expect(page.getByRole('list')).toContainText('server: input_audio_buffer.speech_started');
+  await expect(page.getByRole('list')).toContainText('server: input_audio_buffer.speech_stopped');
+  await expect(page.locator('#eventLog li').first()).toContainText('server: input_audio_buffer.speech_stopped');
+});
+
 test('AC-FR010 vision model selector is used for canvas describe requests', async ({ page }) => {
   await installBrowserAudioInstrumentation(page);
   let requestedVisionModel;
@@ -291,7 +344,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'mock',
-        version: '0.2.4',
+        version: '0.2.5',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',

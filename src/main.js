@@ -40,6 +40,20 @@ function log(message) {
   els.log.prepend(li);
 }
 
+
+function formatServerEventForLog(event) {
+  const fields = [];
+  for (const key of ['event_id', 'item_id', 'response_id', 'type']) {
+    if (event[key] && key !== 'type') fields.push(`${key}=${event[key]}`);
+  }
+  const transcript = event.transcript || event.delta || event.text;
+  if (typeof transcript === 'string' && transcript.trim()) {
+    fields.push(`text=${transcript.trim().slice(0, 80)}`);
+  }
+  const suffix = fields.length ? ` (${fields.join(' ')})` : '';
+  return `server: ${event.type || 'unknown'}${suffix}`;
+}
+
 function selectedIntervalMs() {
   return Number(els.interval.value);
 }
@@ -97,6 +111,13 @@ function wireTransport(t) {
   });
   t.addEventListener('assistant_message', (event) => log(`assistant: ${event.detail.text}`));
   t.addEventListener('client_event', (event) => log(`sent: ${event.detail.type}`));
+  t.addEventListener('server_event', (event) => {
+    // Server events are the only reliable markers we get for Realtime-side VAD,
+    // transcript, and response lifecycle timing. Keep a compact line in the UI
+    // log for humans, and print the full payload in DevTools for debugging.
+    log(formatServerEventForLog(event.detail));
+    console.debug('[realtime server event]', event.detail.type, event.detail);
+  });
   t.addEventListener('disconnected', () => {
     connected = false;
     els.status.textContent = 'disconnected';
