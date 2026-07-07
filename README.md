@@ -142,3 +142,15 @@ Copy an image to the clipboard and press paste (`Cmd+V` on macOS, `Ctrl+V` elsew
 
 The server reads the version from `package.json` and exposes it through `/api/config`.
 The browser displays it as `version: ...`, logs it to the browser console, and writes `app version: ...` into the Transcript / events list. This makes it easy to verify which extracted archive/build is actually running.
+
+## AI pink cat-paw cursor tools
+
+The canvas now has a second cursor for the realtime companion: a visible pink cat paw centered over the canvas at startup. The user still draws with the mouse, while the companion can draw through realtime tool calls.
+
+Available companion canvas tools in live mode:
+
+- `canvas_cursor_move`: move the paw `up`, `down`, `left`, or `right` by `distance_px` without changing pixels.
+- `canvas_draw_line`: draw a straight line from the paw in a direction, move the paw to the endpoint, and accept any browser-supported CSS `color`.
+- `canvas_erase_line`: erase along a straight line from the paw in a direction and move the paw to the endpoint.
+
+The browser applies these tool calls locally, logs them in the event list, and sends a function-call output back over the realtime data channel. The same canvas-send cadence and checksum deduplication apply after companion-drawn changes.

@@ -1,4 +1,4 @@
-export function createDrawingCanvas(canvas, onDraw) {
+export function createDrawingCanvas(canvas, onDraw, options = {}) {
   const ctx = canvas.getContext('2d');
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
@@ -8,6 +8,10 @@ export function createDrawingCanvas(canvas, onDraw) {
   let drawing = false;
   let changed = false;
   let mode = 'draw';
+  let companionCursor = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+  };
 
   function point(event) {
     const rect = canvas.getBoundingClientRect();
@@ -20,6 +24,81 @@ export function createDrawingCanvas(canvas, onDraw) {
   function markChanged() {
     changed = true;
     onDraw?.();
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function normalizeDistance(distancePx) {
+    const parsed = Number(distancePx);
+    if (!Number.isFinite(parsed)) return 50;
+    return clamp(Math.abs(parsed), 0, Math.max(canvas.width, canvas.height));
+  }
+
+  function directionDelta(direction, distancePx) {
+    const distance = normalizeDistance(distancePx);
+    if (direction === 'up') return { dx: 0, dy: -distance };
+    if (direction === 'down') return { dx: 0, dy: distance };
+    if (direction === 'left') return { dx: -distance, dy: 0 };
+    if (direction === 'right') return { dx: distance, dy: 0 };
+    throw new Error(`Unsupported companion cursor direction: ${direction}`);
+  }
+
+  function pointFromDirection(direction, distancePx) {
+    const delta = directionDelta(direction, distancePx);
+    return {
+      x: clamp(companionCursor.x + delta.dx, 0, canvas.width),
+      y: clamp(companionCursor.y + delta.dy, 0, canvas.height),
+    };
+  }
+
+  function notifyCompanionCursorChanged() {
+    options.onCompanionCursorChange?.({ ...companionCursor });
+  }
+
+  function setCompanionCursor(nextPoint) {
+    companionCursor = {
+      x: clamp(nextPoint.x, 0, canvas.width),
+      y: clamp(nextPoint.y, 0, canvas.height),
+    };
+    notifyCompanionCursorChanged();
+    return { ...companionCursor };
+  }
+
+  function normalizeLineWidth(lineWidthPx, fallback) {
+    const parsed = Number(lineWidthPx);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return clamp(parsed, 1, 80);
+  }
+
+  function normalizeColor(color) {
+    const candidate = typeof color === 'string' && color.trim() ? color.trim() : '#ff66aa';
+    if (window.CSS?.supports?.('color', candidate)) return candidate;
+    return '#ff66aa';
+  }
+
+  function drawCompanionSegment(toPoint, { color = '#ff66aa', lineWidthPx = 7, erase = false } = {}) {
+    const from = { ...companionCursor };
+    const to = setCompanionCursor(toPoint);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (erase) {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineWidth = normalizeLineWidth(lineWidthPx, 28);
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = normalizeColor(color);
+      ctx.lineWidth = normalizeLineWidth(lineWidthPx, 7);
+    }
+    ctx.stroke();
+    ctx.restore();
+    markChanged();
+    return { from, to };
   }
 
   function drawImageAspectFit(image) {
@@ -103,6 +182,8 @@ export function createDrawingCanvas(canvas, onDraw) {
   canvas.addEventListener('pointerup', () => { drawing = false; });
   canvas.addEventListener('pointercancel', () => { drawing = false; });
 
+  notifyCompanionCursorChanged();
+
   return {
     hasChanged: () => changed,
     markSent: () => { changed = false; },
@@ -119,5 +200,18 @@ export function createDrawingCanvas(canvas, onDraw) {
       markChanged();
     },
     pasteImage,
+    getCompanionCursor: () => ({ ...companionCursor }),
+    moveCompanionCursor: ({ direction, distance_px: distancePx = 50 } = {}) => {
+      const to = pointFromDirection(direction, distancePx);
+      return setCompanionCursor(to);
+    },
+    drawCompanionLine: ({ direction, distance_px: distancePx = 50, color = '#ff66aa', line_width_px: lineWidthPx = 7 } = {}) => {
+      const to = pointFromDirection(direction, distancePx);
+      return drawCompanionSegment(to, { color, lineWidthPx });
+    },
+    eraseCompanionLine: ({ direction, distance_px: distancePx = 50, line_width_px: lineWidthPx = 28 } = {}) => {
+      const to = pointFromDirection(direction, distancePx);
+      return drawCompanionSegment(to, { erase: true, lineWidthPx });
+    },
   };
 }

@@ -31,3 +31,7 @@ ADDITION: The user wants to paste an image from the clipboard into the canvas us
 
 
 ADDITION: The app must avoid sending unchanged canvas images to the vision model by comparing a checksum/signature with the previous submitted frame. This must be covered by an end-to-end user journey test before implementation.
+
+## Raw user input 2026-07-07 ADDITION
+
+ADDITION: Add a second AI-controlled cursor on the canvas, visually represented as a pink cat paw. The paw starts in the center of the canvas. The realtime companion must get tools to move the paw up/down/left/right by a requested distance, draw straight lines in any requested color while moving the paw, and erase while moving the paw. The human user still draws with the mouse; the companion draws through realtime tool calls. Canvas images continue to be sent to the companion so the conversation and tool-driven drawing can be interactive. Tests must be written first.

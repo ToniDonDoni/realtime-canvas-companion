@@ -64,7 +64,7 @@ Do not say hello after the first assistant message in this session.
 Treat screen_summary messages as ongoing visual context, not as a new conversation start.
 When a screen_summary arrives, use it to ground the current conversation.
 If the user is speaking or has just spoken, answer the user's spoken question using the visual context.
-You have tools. When the user gives a direct game command, call the matching game tool instead of saying you cannot control the game. Use game_move for movement, game_attack for attacks, and game_defend for shield, dodge, or defensive commands. When the user says search, google, find online, or asks for fresh external facts, call web_search. Describe tool results briefly after they complete.
+You have tools. Use the canvas tools to control a visible pink cat-paw cursor on the shared canvas. The user can draw with the mouse; you can draw with the paw. Use canvas_cursor_move to move without drawing, canvas_draw_line to draw a colored line while moving, and canvas_erase_line to erase while moving. Prefer short, deliberate strokes. When the user asks you to draw or edit the canvas, call the relevant canvas tool instead of only describing what you would do. When the user gives a direct game command, call the matching game tool instead of saying you cannot control the game. Use game_move for movement, game_attack for attacks, and game_defend for shield, dodge, or defensive commands. When the user says search, google, find online, or asks for fresh external facts, call web_search. Describe tool results briefly after they complete.
 Be concise.`,
         tool_choice: 'auto',
         tools: [
@@ -79,6 +79,81 @@ Be concise.`,
                 query: { type: 'string', description: 'The search query.' },
               },
               required: ['query'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'canvas_cursor_move',
+            description: 'Move the visible pink cat-paw cursor on the canvas without drawing.',
+            parameters: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                direction: {
+                  type: 'string',
+                  enum: ['up', 'down', 'left', 'right'],
+                  description: 'Direction to move the paw cursor.',
+                },
+                distance_px: {
+                  type: 'integer',
+                  description: 'Movement distance in canvas pixels. Defaults to 50.',
+                },
+              },
+              required: ['direction'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'canvas_draw_line',
+            description: 'Draw a straight line from the pink cat-paw cursor in a direction, using any CSS color, and move the cursor to the line end.',
+            parameters: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                direction: {
+                  type: 'string',
+                  enum: ['up', 'down', 'left', 'right'],
+                  description: 'Direction to draw and move.',
+                },
+                distance_px: {
+                  type: 'integer',
+                  description: 'Line length in canvas pixels. Defaults to 50.',
+                },
+                color: {
+                  type: 'string',
+                  description: 'CSS color for the line, for example #ff66aa, red, or rgb(0 120 255).',
+                },
+                line_width_px: {
+                  type: 'integer',
+                  description: 'Stroke width in canvas pixels. Defaults to 7.',
+                },
+              },
+              required: ['direction'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'canvas_erase_line',
+            description: 'Erase along a straight line from the pink cat-paw cursor in a direction and move the cursor to the erased line end.',
+            parameters: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                direction: {
+                  type: 'string',
+                  enum: ['up', 'down', 'left', 'right'],
+                  description: 'Direction to erase and move.',
+                },
+                distance_px: {
+                  type: 'integer',
+                  description: 'Erase distance in canvas pixels. Defaults to 50.',
+                },
+                line_width_px: {
+                  type: 'integer',
+                  description: 'Eraser width in canvas pixels. Defaults to 28.',
+                },
+              },
+              required: ['direction'],
             },
           },
           {
@@ -162,6 +237,15 @@ Be concise.`,
     if (name === 'web_search') {
       return { ok: true, tool: name, query: args.query, note: 'Demo only: real web search is not wired yet.' };
     }
+    if (name === 'canvas_cursor_move') {
+      return { ok: true, tool: name, action: `move paw ${args.direction}`, distance_px: args.distance_px ?? 50 };
+    }
+    if (name === 'canvas_draw_line') {
+      return { ok: true, tool: name, action: `draw ${args.direction}`, distance_px: args.distance_px ?? 50, color: args.color ?? '#ff66aa' };
+    }
+    if (name === 'canvas_erase_line') {
+      return { ok: true, tool: name, action: `erase ${args.direction}`, distance_px: args.distance_px ?? 50 };
+    }
     if (name === 'game_move') {
       return { ok: true, tool: name, action: `move ${args.direction}`, duration_ms: args.duration_ms ?? 300 };
     }
@@ -176,15 +260,15 @@ Be concise.`,
 
   handleToolCall({ name, callId, rawArguments }) {
     const args = this.parseToolArguments(rawArguments);
-    const result = this.executeDemoTool(name, args);
-    this.dispatchEvent(new CustomEvent('tool_call', { detail: { name, callId, args, result } }));
+    const detail = { name, callId, args, result: this.executeDemoTool(name, args) };
+    this.dispatchEvent(new CustomEvent('tool_call', { detail }));
     if (!this.dc || this.dc.readyState !== 'open' || !callId) return;
     this.dc.send(JSON.stringify({
       type: 'conversation.item.create',
       item: {
         type: 'function_call_output',
         call_id: callId,
-        output: JSON.stringify(result),
+        output: JSON.stringify(detail.result),
       },
     }));
     this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'tool_output.sent', name, callId } }));
@@ -266,7 +350,7 @@ screen_summary:
 ${summary}
 
 Do not greet. Do not treat this as a new conversation.
-Use this only as visual grounding for the current or immediately preceding user turn.`,
+Use this only as visual grounding for the current or immediately preceding user turn. If drawing on the shared canvas would help, call canvas_cursor_move, canvas_draw_line, or canvas_erase_line.`,
         }],
       },
     }));

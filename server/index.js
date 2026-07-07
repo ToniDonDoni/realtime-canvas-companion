@@ -15,6 +15,7 @@ const realtimeModel = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1-min
 const visionModel = process.env.OPENAI_VISION_MODEL || 'gpt-5.4-nano';
 const voice = process.env.OPENAI_REALTIME_VOICE || 'marin';
 const defaultCanvasIntervalMs = Number(process.env.CANVAS_SEND_INTERVAL_MS || 5000);
+const verboseLogs = process.env.VERBOSE_LOGS === '1';
 // The server is the source of truth for selectable models. Keeping this list on
 // the backend prevents the browser from requesting arbitrary model names and
 // gives tests a stable contract to assert against.
@@ -49,9 +50,13 @@ function chooseAllowedModel(requested, allowed, fallback) {
   return fallback;
 }
 
+function logVerbose(message, ...args) {
+  if (verboseLogs) console.log(message, ...args);
+}
+
 console.log(`[config] APP_VERSION=${packageJson.version}`);
 console.log(`[config] APP_MODE=${APP_MODE}`);
-console.log(`[config] OPENAI_API_KEY=${maskedOpenAIKey()}`);
+console.log(`[config] OPENAI_API_KEY=${process.env.OPENAI_API_KEY ? 'present' : 'missing'}`);
 console.log(`[config] OPENAI_REALTIME_MODEL=${realtimeModel}`);
 console.log(`[config] OPENAI_VISION_MODEL=${visionModel}`);
 console.log(`[config] OPENAI_REALTIME_VOICE=${voice}`);
@@ -87,7 +92,7 @@ app.post('/api/realtime/session', async (req, res) => {
   }
 
   if (!requireLiveOpenAIKey(res)) return;
-  console.log(`[realtime] creating call model=${model} voice=${voice} key=${maskedOpenAIKey()}`);
+  console.log(`[realtime] creating call model=${model} voice=${voice}`);
 
   const fd = new FormData();
   fd.set('sdp', sdp);
@@ -136,7 +141,7 @@ app.post('/api/vision/describe', async (req, res) => {
   }
 
   if (!requireLiveOpenAIKey(res)) return;
-  console.log(`[vision] describing canvas with model=${selectedVisionModel} key=${maskedOpenAIKey()} imageBytes=${imageDataUrl.length}`);
+  logVerbose(`[vision] describing canvas with model=${selectedVisionModel} imageBytes=${imageDataUrl.length}`);
 
   try {
     const upstream = await fetch('https://api.openai.com/v1/responses', {
@@ -157,7 +162,7 @@ app.post('/api/vision/describe', async (req, res) => {
       }),
     });
     const text = await upstream.text();
-    console.log(`[vision] OpenAI status=${upstream.status}`);
+    logVerbose(`[vision] OpenAI status=${upstream.status}`);
     let data;
     try {
       data = JSON.parse(text);
@@ -175,7 +180,7 @@ app.post('/api/vision/describe', async (req, res) => {
       res.status(502).json({ error: 'OpenAI vision response had no summary', body: text });
       return;
     }
-    console.log(`[vision] OpenAI summary=${summary}`);
+    logVerbose(`[vision] OpenAI summary=${summary}`);
     res.json({ summary });
   } catch (error) {
     console.error('[vision] request failed', error);

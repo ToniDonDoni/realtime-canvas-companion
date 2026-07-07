@@ -188,3 +188,35 @@ AC-FR013-1:
 - Then: the browser must not send another `/api/vision/describe` request for the unchanged image, and the event log must show that the unchanged frame was skipped.
 - Boundary: browser end-to-end with network request counting.
 - Not enough: a checksum helper exists, an internal flag changes, or a unit test calls the helper directly.
+
+## ADDITION FR-015 AI-controlled pink cat-paw canvas cursor and drawing tools
+
+The canvas has a second cursor controlled by the realtime companion. The cursor is visually represented as a pink cat paw, starts in the center of the canvas, and is independent from the user's mouse drawing. The companion can call tools to move the paw without drawing, draw a straight colored line while moving the paw, and erase along a straight line while moving the paw.
+
+AC-FR015-1:
+- Given: the app is opened in a browser.
+- When: the first screen is displayed.
+- Then: the user can visibly identify a pink cat-paw companion cursor centered over the canvas.
+- Boundary: browser end-to-end with rendered UI geometry.
+- Not enough: a variable exists for a cursor position or a source file contains paw markup.
+
+AC-FR015-2:
+- Given: the app is connected in live-mode with a fake WebRTC/data-channel boundary.
+- When: the realtime model emits a `canvas_cursor_move` tool call.
+- Then: the visible paw cursor moves in the requested direction and distance without changing canvas pixels.
+- Boundary: browser end-to-end with a simulated realtime server tool-call event.
+- Not enough: directly calling a canvas helper or asserting only a tool schema exists.
+
+AC-FR015-3:
+- Given: the app is connected and the paw cursor is visible.
+- When: the realtime model emits a `canvas_draw_line` tool call with a color and distance.
+- Then: the canvas visibly contains a line in that color and the paw cursor moves to the line end.
+- Boundary: browser end-to-end with canvas pixel inspection.
+- Not enough: only logging the tool call.
+
+AC-FR015-4:
+- Given: the canvas contains a companion-drawn line and the paw is at a line endpoint.
+- When: the realtime model emits a `canvas_erase_line` tool call across that line.
+- Then: visible/non-empty canvas content is reduced and the paw moves to the erase endpoint.
+- Boundary: browser end-to-end with canvas pixel inspection.
+- Not enough: an erase tool schema exists without a rendered canvas effect.

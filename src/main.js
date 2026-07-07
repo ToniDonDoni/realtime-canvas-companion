@@ -13,6 +13,7 @@ const els = {
   status: document.querySelector('#statusBadge'),
   log: document.querySelector('#eventLog'),
   canvas: document.querySelector('#drawingCanvas'),
+  companionPaw: document.querySelector('#companionPaw'),
   audio: document.querySelector('#remoteAudio'),
 };
 
@@ -56,6 +57,34 @@ function formatServerEventForLog(event) {
 
 function selectedIntervalMs() {
   return Number(els.interval.value);
+}
+
+function updateCompanionPaw(point) {
+  const xPercent = (point.x / els.canvas.width) * 100;
+  const yPercent = (point.y / els.canvas.height) * 100;
+  els.companionPaw.style.left = `${xPercent}%`;
+  els.companionPaw.style.top = `${yPercent}%`;
+}
+
+function applyCompanionCanvasTool(name, args = {}) {
+  if (!canvasState || !name?.startsWith('canvas_')) return undefined;
+  if (name === 'canvas_cursor_move') {
+    const cursor = canvasState.moveCompanionCursor(args);
+    log(`tool: canvas_cursor_move ${args.direction} ${args.distance_px ?? 50}px`);
+    return { ok: true, cursor };
+  }
+  if (name === 'canvas_draw_line') {
+    const stroke = canvasState.drawCompanionLine(args);
+    log(`tool: canvas_draw_line ${args.direction} ${args.distance_px ?? 50}px ${args.color || '#ff66aa'}`);
+    return { ok: true, stroke };
+  }
+  if (name === 'canvas_erase_line') {
+    const stroke = canvasState.eraseCompanionLine(args);
+    log(`tool: canvas_erase_line ${args.direction} ${args.distance_px ?? 50}px`);
+    return { ok: true, stroke };
+  }
+  log(`tool error: unsupported canvas tool ${name}`);
+  return { ok: false, error: `Unsupported canvas tool ${name}` };
 }
 
 // We checksum the captured canvas data URL to avoid paying for vision requests
@@ -110,6 +139,10 @@ function wireTransport(t) {
     scheduleCanvasSending();
   });
   t.addEventListener('assistant_message', (event) => log(`assistant: ${event.detail.text}`));
+  t.addEventListener('tool_call', (event) => {
+    const applied = applyCompanionCanvasTool(event.detail.name, event.detail.args);
+    if (applied) event.detail.result = applied;
+  });
   t.addEventListener('client_event', (event) => log(`sent: ${event.detail.type}`));
   t.addEventListener('server_event', (event) => {
     // Server events are the only reliable markers we get for Realtime-side VAD,
@@ -213,7 +246,9 @@ els.visionModel.addEventListener('change', () => {
   log(`vision model selected: ${els.visionModel.value}`);
 });
 
-canvasState = createDrawingCanvas(els.canvas, () => log('drawing changed'));
+canvasState = createDrawingCanvas(els.canvas, () => log('drawing changed'), {
+  onCompanionCursorChange: updateCompanionPaw,
+});
 for (const tool of els.canvasTools) {
   tool.addEventListener('change', () => {
     if (!tool.checked) return;

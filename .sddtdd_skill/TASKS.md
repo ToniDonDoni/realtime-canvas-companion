@@ -36,3 +36,11 @@
 1. RED: Add an E2E test that draws once, observes one vision request, waits another interval without changing the canvas, and proves no second vision request is sent.
 2. GREEN: Add canvas frame checksum tracking before vision describe calls and skip unchanged frames with a visible event-log message.
 3. REGRESSION: Run the E2E suite.
+
+## Task FR-015 AI cat-paw cursor and canvas tools
+
+1. RED: Add an E2E test proving the pink cat-paw cursor is visible and centered on first load.
+2. RED: Add an E2E test that simulates realtime tool calls for moving the paw, drawing a colored line, and erasing the line through the browser/data-channel boundary.
+3. GREEN: Implement the rendered paw cursor overlay and canvas helper methods for move/draw/erase.
+4. GREEN: Add realtime tool schemas and dispatch tool-call events into the canvas layer.
+5. REGRESSION: Run the E2E suite.

@@ -378,7 +378,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
 
 test('AC-FR011 pasting an image replaces the canvas with aspect-fit content and white side margins', async ({ page }) => {
   await installBrowserAudioInstrumentation(page);
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:5179' });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5179' });
   await page.goto('/');
 
   await drawStroke(page, 40, 40, 600, 320);
@@ -446,4 +446,90 @@ test('AC-FR013 unchanged canvas frame is not resent to vision after a failed des
 
   await drawStroke(page, 300, 120, 420, 220);
   await expect.poll(() => visionDescribeRequests, { timeout: 2500 }).toBe(2);
+});
+
+async function emitRealtimeToolCall(page, name, args, callId = `${name}_test_call`) {
+  await page.evaluate(({ name, args, callId }) => {
+    window.__lastFakePeerConnection.dc.onmessage({
+      data: JSON.stringify({
+        type: 'response.function_call_arguments.done',
+        name,
+        call_id: callId,
+        arguments: JSON.stringify(args),
+      }),
+    });
+  }, { name, args, callId });
+}
+
+async function companionPawCenter(page) {
+  return page.locator('#companionPaw').boundingBox().then((box) => {
+    expect(box).not.toBeNull();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+}
+
+test('AC-FR015 companion paw cursor is visible, starts centered, and realtime canvas tools move, draw, and erase', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await installFakeWebRTC(page);
+
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'live',
+        version: '0.2.5',
+        realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
+        visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
+        defaultRealtimeModel: 'gpt-realtime-2.1-mini',
+        defaultVisionModel: 'gpt-5.4-nano',
+        defaultVoice: 'marin',
+        defaultCanvasIntervalMs: 5000,
+        keyStatus: 'test-key',
+      }),
+    });
+  });
+  await page.route('**/api/realtime/session**', async (route) => {
+    await route.fulfill({ status: 201, contentType: 'application/sdp', body: 'v=0\r\ns=fake-answer\r\n' });
+  });
+
+  await page.goto('/');
+  const canvasBox = await page.getByLabel('Drawing canvas').boundingBox();
+  expect(canvasBox).not.toBeNull();
+  await expect(page.getByLabel('Companion paw cursor')).toBeVisible();
+  const initialPaw = await companionPawCenter(page);
+  expect(Math.abs(initialPaw.x - (canvasBox.x + canvasBox.width / 2))).toBeLessThan(8);
+  expect(Math.abs(initialPaw.y - (canvasBox.y + canvasBox.height / 2))).toBeLessThan(8);
+
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+
+  await emitRealtimeToolCall(page, 'canvas_cursor_move', { direction: 'up', distance_px: 40 }, 'move_paw_up');
+  await expect(page.getByRole('list')).toContainText('sent: tool_output.sent');
+  await expect(page.getByRole('list')).toContainText('tool: canvas_cursor_move up 40px');
+  const movedPaw = await companionPawCenter(page);
+  expect(movedPaw.y).toBeLessThan(initialPaw.y - 20);
+  expect(await nonEmptyCanvasPixelCount(page)).toBe(0);
+
+  await emitRealtimeToolCall(page, 'canvas_draw_line', { direction: 'right', distance_px: 140, color: '#ff66aa', line_width_px: 9 }, 'draw_pink_line');
+  await expect(page.getByRole('list')).toContainText('tool: canvas_draw_line right 140px #ff66aa');
+  const afterDraw = await nonEmptyCanvasPixelCount(page);
+  expect(afterDraw).toBeGreaterThan(0);
+  const afterDrawPaw = await companionPawCenter(page);
+  expect(afterDrawPaw.x).toBeGreaterThan(movedPaw.x + 90);
+
+  const pinkSample = await page.evaluate(() => {
+    const canvas = document.querySelector('#drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    return Array.from(ctx.getImageData(390, 140, 1, 1).data);
+  });
+  expect(pinkSample[0]).toBeGreaterThan(220);
+  expect(pinkSample[1]).toBeGreaterThan(70);
+  expect(pinkSample[2]).toBeGreaterThan(130);
+  expect(pinkSample[3]).toBe(255);
+
+  await emitRealtimeToolCall(page, 'canvas_erase_line', { direction: 'left', distance_px: 140, line_width_px: 32 }, 'erase_pink_line');
+  await expect(page.getByRole('list')).toContainText('tool: canvas_erase_line left 140px');
+  const afterErase = await nonEmptyCanvasPixelCount(page);
+  expect(afterErase).toBeLessThan(afterDraw);
 });

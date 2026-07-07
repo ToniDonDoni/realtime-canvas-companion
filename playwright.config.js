@@ -10,7 +10,7 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
   use: {
-    baseURL: 'http://localhost:5179',
+    baseURL: 'http://127.0.0.1:5179',
     headless: true,
     launchOptions: {
       ...(chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : {}),
@@ -19,7 +19,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'APP_MODE=mock PORT=5179 npm start',
-    url: 'http://localhost:5179',
+    url: 'http://127.0.0.1:5179',
     reuseExistingServer: !process.env.CI,
     timeout: 20_000,
   },

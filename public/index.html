@@ -34,7 +34,16 @@
         <span id="versionBadge">version: loading</span>
         <span id="statusBadge">disconnected</span>
       </section>
-      <canvas id="drawingCanvas" width="640" height="360" aria-label="Drawing canvas"></canvas>
+      <div class="canvas-stage" aria-label="Canvas stage">
+        <canvas id="drawingCanvas" width="640" height="360" aria-label="Drawing canvas"></canvas>
+        <div id="companionPaw" class="companion-paw" aria-label="Companion paw cursor" role="img">
+          <span class="toe toe-1"></span>
+          <span class="toe toe-2"></span>
+          <span class="toe toe-3"></span>
+          <span class="toe toe-4"></span>
+          <span class="pad"></span>
+        </div>
+      </div>
       <section class="transcript" aria-label="Transcript and event log">
         <h2>Transcript / events</h2>
         <ul id="eventLog"></ul>
