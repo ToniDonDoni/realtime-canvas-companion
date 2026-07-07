@@ -1,5 +1,13 @@
 # Realtime Canvas Companion
 
+
+## Architecture and event model
+
+Read `docs/EVENT_AND_AUDIO_MODEL.md` for the detailed explanation of how canvas
+updates, vision summaries, Realtime data-channel events, transcripts, and audio
+playback move through the app. The important part: scene summaries are sent
+immediately and do not wait for previous assistant audio to finish playing.
+
 One-page browser demo for a realtime AI voice companion that can listen, speak, and comment on a drawable canvas.
 
 ## What is included

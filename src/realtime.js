@@ -1,5 +1,8 @@
 import { playMockVoice } from './audio.js';
 
+// The mock transport preserves the public behavior of the live transport:
+// connect, receive assistant messages, send scene summaries, and disconnect.
+// E2E tests use it to prove the user journey without spending OpenAI tokens.
 export class MockRealtimeTransport extends EventTarget {
   constructor({ model }) {
     super();
@@ -18,6 +21,9 @@ export class MockRealtimeTransport extends EventTarget {
   }
 
   async sendSceneSummary(summary) {
+    // Current policy: every accepted visual summary immediately asks the model for
+    // a response. This does not wait for previous audio to finish. A production
+    // companion may instead queue, coalesce, or cancel responses.
     if (!this.connected) return;
     this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_summary.sent', summary } }));
     window.setTimeout(async () => {
@@ -33,6 +39,10 @@ export class MockRealtimeTransport extends EventTarget {
   }
 }
 
+// The live transport treats OpenAI as a WebRTC peer. Audio and JSON events are
+// intentionally separate: microphone/speaker audio travels on media tracks, while
+// text events, transcripts, errors, and scene summaries travel on the data
+// channel.
 export class OpenAIWebRTCTransport extends EventTarget {
   constructor({ model, audioElement }) {
     super();
@@ -44,10 +54,14 @@ export class OpenAIWebRTCTransport extends EventTarget {
   }
 
   async connect() {
+    // A single peer connection owns both streams: the microphone audio we send to
+    // OpenAI and the assistant audio track OpenAI sends back.
     this.pc = new RTCPeerConnection();
     this.pc.ontrack = (event) => { this.audioElement.srcObject = event.streams[0]; };
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     this.pc.addTrack(this.stream.getTracks()[0]);
+    // The data channel is the control/event lane. It is faster than audible
+    // playback, so transcript events can appear in the UI before speech finishes.
     this.dc = this.pc.createDataChannel('oai-events');
     this.dc.onmessage = (event) => this.handleEvent(event.data);
     const offer = await this.pc.createOffer();
@@ -64,6 +78,9 @@ export class OpenAIWebRTCTransport extends EventTarget {
   }
 
   handleEvent(raw) {
+    // OpenAI emits many event types. The demo surfaces only user-useful messages
+    // and errors, while still forwarding the raw server event for future state
+    // machine work.
     let event;
     try { event = JSON.parse(raw); } catch { return; }
     if (event.type === 'error' || event.error) {
@@ -77,6 +94,9 @@ export class OpenAIWebRTCTransport extends EventTarget {
   }
 
   async sendSceneSummary(summary) {
+    // Current policy: every accepted visual summary immediately asks the model for
+    // a response. This does not wait for previous audio to finish. A production
+    // companion may instead queue, coalesce, or cancel responses.
     if (!this.dc || this.dc.readyState !== 'open') return;
     this.dc.send(JSON.stringify({
       type: 'conversation.item.create',
@@ -86,6 +106,8 @@ export class OpenAIWebRTCTransport extends EventTarget {
         content: [{ type: 'input_text', text: `screen_summary: ${summary}` }],
       },
     }));
+    // `conversation.item.create` only adds context. `response.create` is the
+    // explicit trigger that asks the realtime model to answer.
     this.dc.send(JSON.stringify({ type: 'response.create' }));
     this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_summary.sent', summary } }));
   }

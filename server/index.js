@@ -15,9 +15,14 @@ const realtimeModel = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-2.1-min
 const visionModel = process.env.OPENAI_VISION_MODEL || 'gpt-5.4-nano';
 const voice = process.env.OPENAI_REALTIME_VOICE || 'marin';
 const defaultCanvasIntervalMs = Number(process.env.CANVAS_SEND_INTERVAL_MS || 5000);
+// The server is the source of truth for selectable models. Keeping this list on
+// the backend prevents the browser from requesting arbitrary model names and
+// gives tests a stable contract to assert against.
 const realtimeModels = ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'];
 const visionModels = ['gpt-5.4-nano', 'gpt-5.4-mini'];
 
+// Log only a fingerprint of the key. This makes environment debugging possible
+// without leaking the full secret into terminal output or screenshots.
 function maskedOpenAIKey() {
   const key = process.env.OPENAI_API_KEY || '';
   if (!key) return 'missing';
@@ -68,6 +73,9 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// The browser sends an SDP offer here. In live mode we forward that offer to
+// OpenAI's Realtime WebRTC endpoint and return OpenAI's SDP answer to the
+// browser. The browser then talks to OpenAI directly over WebRTC.
 app.post('/api/realtime/session', async (req, res) => {
   const sdp = typeof req.body === 'string' ? req.body : req.body?.sdp;
   const model = chooseAllowedModel(req.query.model, realtimeModels, chooseAllowedModel(realtimeModel, realtimeModels, realtimeModels[0]));
@@ -114,6 +122,9 @@ app.post('/api/realtime/session', async (req, res) => {
   }
 });
 
+// Canvas images are intentionally handled outside the Realtime audio session.
+// This endpoint turns a potentially large PNG data URL into a short text summary,
+// and only that summary is sent into the Realtime data channel.
 app.post('/api/vision/describe', async (req, res) => {
   const { imageDataUrl } = req.body || {};
   const selectedVisionModel = chooseAllowedModel(req.body?.model, visionModels, chooseAllowedModel(visionModel, visionModels, visionModels[0]));

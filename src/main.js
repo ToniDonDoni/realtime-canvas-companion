@@ -23,6 +23,11 @@ let sendTimer;
 let connected = false;
 let lastSubmittedCanvasChecksum = null;
 
+// The log is an event timeline, not an audio playback timeline.
+// Realtime transcripts can arrive before the corresponding synthesized audio
+// has finished playing, so the newest log line may describe a response that the
+// user has not heard yet.
+
 function timestamp() {
   const now = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -39,6 +44,9 @@ function selectedIntervalMs() {
   return Number(els.interval.value);
 }
 
+// We checksum the captured canvas data URL to avoid paying for vision requests
+// when the visible canvas did not change between timer ticks. This is a byte-level
+// duplicate guard, not a semantic image comparison.
 function checksumString(value) {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -76,6 +84,9 @@ async function loadConfig() {
   if (matching) matching.selected = true;
 }
 
+// Transport events are normalized into UI events here so the rest of the app
+// does not need to care whether it is talking to the mock transport or the live
+// OpenAI WebRTC transport.
 function wireTransport(t) {
   t.addEventListener('connected', (event) => {
     connected = true;
@@ -114,6 +125,9 @@ async function stopCall() {
   await transport?.disconnect();
 }
 
+// Vision is a separate request from the Realtime voice session. The Realtime
+// model receives only the short text summary returned by this endpoint, not the
+// raw canvas image.
 async function describeCanvasFrame(imageDataUrl) {
   const res = await fetch('/api/vision/describe', {
     method: 'POST',
@@ -124,13 +138,23 @@ async function describeCanvasFrame(imageDataUrl) {
   return (await res.json()).summary;
 }
 
+// This is the current scene-update policy: send every changed frame immediately
+// on the selected cadence. It does not wait for assistant speech to finish and it
+// does not cancel older audio. See docs/EVENT_AND_AUDIO_MODEL.md for the queue
+// semantics and production alternatives.
 function scheduleCanvasSending() {
   window.clearInterval(sendTimer);
   const interval = selectedIntervalMs();
   sendTimer = window.setInterval(async () => {
+    // The dirty flag is set by user-visible canvas actions: draw, erase, clear,
+    // and paste image. If the user has not changed the canvas, there is no reason
+    // to spend vision tokens.
     if (!connected || !canvasState.hasChanged()) return;
     const imageDataUrl = canvasState.capture();
     const checksum = checksumString(imageDataUrl);
+    // A failed vision request still records the checksum. Otherwise the app
+    // would retry the exact same unchanged image forever and burn money every
+    // interval while the model/config is broken.
     if (checksum === lastSubmittedCanvasChecksum) {
       log(`canvas frame skipped (unchanged checksum: ${checksum})`);
       canvasState.markSent();
@@ -142,6 +166,9 @@ function scheduleCanvasSending() {
       const summary = await describeCanvasFrame(imageDataUrl);
       log(`vision summary: ${summary}`);
       canvasState.markSent();
+      // This immediately creates a new Realtime response. It can happen while
+      // previous assistant audio is still playing; the browser/OpenAI audio path
+      // handles playback ordering.
       await transport.sendSceneSummary(summary);
     } catch (error) {
       log(`vision error: ${error.message || error}`);
@@ -174,6 +201,9 @@ for (const tool of els.canvasTools) {
   });
 }
 
+// Paste replaces the whole canvas instead of compositing over existing strokes.
+// That makes screenshots behave like a new visual state for the companion to
+// describe.
 async function handlePaste(event) {
   const items = [...(event.clipboardData?.items || [])];
   const imageItem = items.find((item) => item.type.startsWith('image/'));

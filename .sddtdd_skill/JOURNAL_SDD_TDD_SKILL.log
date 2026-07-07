@@ -28,4 +28,4 @@ FR-011 RED: Added browser E2E user journey for clipboard image paste.
 FR-011 GREEN: Implemented paste handler and aspect-fit canvas replacement.
 
 2026-07-07 FR013: Appended requirement for checksum-based unchanged canvas frame deduplication before vision calls. Added RED E2E user journey, implemented checksum skip, and prepared regression evidence.
-2026-07-07 FR013: Bumped visible app version to 0.2.3 for checksum dedupe build.
+2026-07-07 FR013: Bumped visible app version to 0.2.2 for checksum dedupe build.

@@ -47,8 +47,8 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.3');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.3');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.4');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.4');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
@@ -206,8 +206,8 @@ test('AC-FR012 app version is visible on screen and in the event log', async ({ 
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
 
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.3');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.3');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.4');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.4');
 });
 
 async function installFakeWebRTC(page) {
@@ -237,18 +237,12 @@ async function installFakeWebRTC(page) {
       async setRemoteDescription(answer) { this.remoteDescription = answer; }
       close() {}
     }
-    Object.defineProperty(window, 'RTCPeerConnection', {
-      value: FakeRTCPeerConnection,
-      configurable: true,
-    });
-    Object.defineProperty(navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: async () => ({
-          getTracks: () => [{ stop() {} }],
-        }),
-      },
-      configurable: true,
-    });
+    window.RTCPeerConnection = FakeRTCPeerConnection;
+    navigator.mediaDevices = {
+      getUserMedia: async () => ({
+        getTracks: () => [{ stop() {} }],
+      }),
+    };
   });
 }
 
@@ -263,7 +257,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.3',
+        version: '0.2.4',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -297,7 +291,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'mock',
-        version: '0.2.3',
+        version: '0.2.4',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
