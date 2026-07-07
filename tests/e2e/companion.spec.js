@@ -42,13 +42,13 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Realtime Canvas Companion' })).toBeVisible();
-  await expect(page.getByLabel('Model')).toBeVisible();
+  await expect(page.getByLabel('Model', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Canvas send interval')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
-  await expect(page.getByText('version: 0.2.0')).toBeVisible();
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.0');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.3');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.3');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
@@ -57,7 +57,7 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
 test('AC-FR002 call connects, greets with audio, and stop disconnects', async ({ page }) => {
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
-  await page.getByLabel('Model').selectOption('gpt-realtime-2.1');
+  await page.getByLabel('Model', { exact: true }).selectOption('gpt-realtime-2.1');
   await page.getByRole('button', { name: 'Call' }).click();
   await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
   await expect(page.locator('#statusBadge')).toHaveText('connected');
@@ -206,8 +206,8 @@ test('AC-FR012 app version is visible on screen and in the event log', async ({ 
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
 
-  await expect(page.getByText('version: 0.2.0')).toBeVisible();
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.0');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.3');
+  await expect(page.getByRole('list')).toContainText('app version: 0.2.3');
 });
 
 async function installFakeWebRTC(page) {
@@ -237,12 +237,18 @@ async function installFakeWebRTC(page) {
       async setRemoteDescription(answer) { this.remoteDescription = answer; }
       close() {}
     }
-    window.RTCPeerConnection = FakeRTCPeerConnection;
-    navigator.mediaDevices = {
-      getUserMedia: async () => ({
-        getTracks: () => [{ stop() {} }],
-      }),
-    };
+    Object.defineProperty(window, 'RTCPeerConnection', {
+      value: FakeRTCPeerConnection,
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: async () => ({
+          getTracks: () => [{ stop() {} }],
+        }),
+      },
+      configurable: true,
+    });
   });
 }
 
@@ -257,7 +263,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.0',
+        version: '0.2.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -274,7 +280,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
   });
 
   await page.goto('/');
-  await page.getByLabel('Model').selectOption('gpt-realtime-2.1');
+  await page.getByLabel('Model', { exact: true }).selectOption('gpt-realtime-2.1');
   await expect(page.locator('#eventLog li').first()).toContainText('realtime model selected: gpt-realtime-2.1');
   await page.getByRole('button', { name: 'Call' }).click();
   await expect(page.locator('#statusBadge')).toHaveText('connected');
@@ -291,7 +297,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'mock',
-        version: '0.2.0',
+        version: '0.2.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -364,4 +370,33 @@ test('AC-FR011 pasting an image replaces the canvas with aspect-fit content and 
   expect(samples.center[1]).toBeLessThan(40);
   expect(samples.center[2]).toBeLessThan(40);
   expect(samples.center[3]).toBe(255);
+});
+
+test('AC-FR013 unchanged canvas frame is not resent to vision after a failed describe attempt', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  let visionDescribeRequests = 0;
+  await page.route('**/api/vision/describe', async (route) => {
+    visionDescribeRequests += 1;
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'simulated vision failure' }),
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Canvas send interval').selectOption('1000');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+
+  await drawStroke(page, 100, 120, 260, 190);
+  await expect(page.getByRole('list')).toContainText('canvas frame sent (interval: 1000ms', { timeout: 2500 });
+  await expect(page.getByRole('list')).toContainText('vision error:');
+
+  await page.waitForTimeout(1600);
+  expect(visionDescribeRequests).toBe(1);
+  await expect(page.getByRole('list')).toContainText('canvas frame skipped (unchanged checksum:');
+
+  await drawStroke(page, 300, 120, 420, 220);
+  await expect.poll(() => visionDescribeRequests, { timeout: 2500 }).toBe(2);
 });

@@ -28,3 +28,6 @@ Change the transcript/event log so it does not show numeric ordering. Each event
 ADDITION: User requires realtime model switching to be verified and a visible vision model selector added. The vision selector must offer the low-cost vision choices previously discussed, and tests must be written before implementation. The selected realtime model must be used when opening a live session. The selected vision model must be used when sending canvas frames for description.
 
 ADDITION: The user wants to paste an image from the clipboard into the canvas using the normal paste hotkey. When pasted, the canvas should be replaced by the image, resized to fit the canvas while preserving proportions. If the image is narrower than the canvas, white side margins should remain. If it is shorter, white top/bottom margins should remain. This must be covered by an end-to-end user journey test before implementation.
+
+
+ADDITION: The app must avoid sending unchanged canvas images to the vision model by comparing a checksum/signature with the previous submitted frame. This must be covered by an end-to-end user journey test before implementation.

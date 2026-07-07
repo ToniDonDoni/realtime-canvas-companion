@@ -29,3 +29,10 @@
 1. RED: Add an E2E test that opens the app, draws existing content, puts an image in the clipboard, presses the paste shortcut, and asserts the canvas is replaced with aspect-fit image content and white margins.
 2. GREEN: Implement browser paste handling and canvas aspect-fit image rendering.
 3. REGRESSION: Run the E2E suite.
+
+
+## Task FR013 unchanged canvas vision deduplication
+
+1. RED: Add an E2E test that draws once, observes one vision request, waits another interval without changing the canvas, and proves no second vision request is sent.
+2. GREEN: Add canvas frame checksum tracking before vision describe calls and skip unchanged frames with a visible event-log message.
+3. REGRESSION: Run the E2E suite.

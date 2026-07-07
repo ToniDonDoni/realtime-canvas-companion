@@ -21,6 +21,7 @@ let transport;
 let canvasState;
 let sendTimer;
 let connected = false;
+let lastSubmittedCanvasChecksum = null;
 
 function timestamp() {
   const now = new Date();
@@ -36,6 +37,15 @@ function log(message) {
 
 function selectedIntervalMs() {
   return Number(els.interval.value);
+}
+
+function checksumString(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 async function loadConfig() {
@@ -120,7 +130,14 @@ function scheduleCanvasSending() {
   sendTimer = window.setInterval(async () => {
     if (!connected || !canvasState.hasChanged()) return;
     const imageDataUrl = canvasState.capture();
-    log(`canvas frame sent (interval: ${interval}ms)`);
+    const checksum = checksumString(imageDataUrl);
+    if (checksum === lastSubmittedCanvasChecksum) {
+      log(`canvas frame skipped (unchanged checksum: ${checksum})`);
+      canvasState.markSent();
+      return;
+    }
+    lastSubmittedCanvasChecksum = checksum;
+    log(`canvas frame sent (interval: ${interval}ms) checksum: ${checksum}`);
     try {
       const summary = await describeCanvasFrame(imageDataUrl);
       log(`vision summary: ${summary}`);

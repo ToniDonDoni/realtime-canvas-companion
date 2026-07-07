@@ -178,3 +178,13 @@ AC-FR011-1:
 - Then: the canvas is replaced with the pasted image, scaled to fit while preserving aspect ratio, and white margins are visible where the image does not fill the canvas.
 - Boundary: browser end-to-end.
 - Not enough: a paste handler exists, an image helper exists, or a unit test calls a draw function directly.
+
+
+## FR013 unchanged canvas vision deduplication
+
+AC-FR013-1:
+- Given: the app is connected, a canvas frame has been submitted for vision, and the visible canvas has not changed since that submission.
+- When: the next canvas send interval fires.
+- Then: the browser must not send another `/api/vision/describe` request for the unchanged image, and the event log must show that the unchanged frame was skipped.
+- Boundary: browser end-to-end with network request counting.
+- Not enough: a checksum helper exists, an internal flag changes, or a unit test calls the helper directly.
