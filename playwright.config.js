@@ -1,9 +1,15 @@
+import { existsSync } from 'node:fs';
 import { defineConfig } from '@playwright/test';
 
-const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || (process.platform === 'darwin'
+const defaultChromiumExecutablePath = process.platform === 'darwin'
   ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   : process.platform === 'linux'
     ? '/usr/bin/chromium'
+    : undefined;
+
+const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+  || (defaultChromiumExecutablePath && existsSync(defaultChromiumExecutablePath)
+    ? defaultChromiumExecutablePath
     : undefined);
 
 export default defineConfig({
