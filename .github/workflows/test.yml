@@ -25,7 +25,16 @@ jobs:
       - name: Force npm registry
         run: npm config set registry https://registry.npmjs.org
 
+      - name: Debug npm registry sources
+        run: |
+          echo "userconfig=$(npm config get userconfig)"
+          echo "globalconfig=$(npm config get globalconfig)"
+          echo "registry=$(npm config get registry)"
+          node -e 'for (const key of Object.keys(process.env).sort()) { if (/^(NPM|NODE)_/.test(key) || /^npm_config_/i.test(key)) { const lower = key.toLowerCase(); const sensitive = /(token|auth|password|secret)/.test(lower); console.log(`${key}=${sensitive ? "***" : process.env[key]}`); } }'
+
       - name: Install dependencies
+        env:
+          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
         run: npm ci --verbose --no-audit --no-fund --foreground-scripts
 
       - name: Install Playwright Chromium
