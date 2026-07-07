@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Realtime Canvas Companion</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Realtime Canvas Companion</h1>
+      <section class="controls" aria-label="Realtime controls">
+        <label>Model
+          <select id="modelSelect" aria-label="Model"></select>
+        </label>
+        <label>Canvas send interval
+          <select id="intervalSelect" aria-label="Canvas send interval">
+            <option value="1000">Every 1 second</option>
+            <option value="5000" selected>Every 5 seconds</option>
+            <option value="10000">Every 10 seconds</option>
+          </select>
+        </label>
+        <button id="callButton" type="button">Call</button>
+        <span id="modeBadge" role="status">mode: loading</span>
+        <span id="statusBadge">disconnected</span>
+      </section>
+      <canvas id="drawingCanvas" width="640" height="360" aria-label="Drawing canvas"></canvas>
+      <section class="transcript" aria-label="Transcript and event log">
+        <h2>Transcript / events</h2>
+        <ol id="eventLog"></ol>
+      </section>
+      <audio id="remoteAudio" autoplay></audio>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+2026-07-07T00:00:00Z SPEC_DRAFT Captured raw user request append-only.
+2026-07-07T00:00:01Z SPEC Created acceptance criteria with observable browser/API boundaries.
+2026-07-07T00:00:02Z ARCHITECTURE Defined mock/live split, browser transports, backend routes, and E2E boundaries.
+2026-07-07T00:00:03Z TASKS Created task breakdown.
+2026-07-07T00:00:04Z RED Authored browser E2E tests before implementation.
+2026-07-07T00:00:05Z GREEN Implemented minimal app/server to satisfy tests.
+2026-07-07T00:00:06Z REGRESSION First Playwright run failed because bundled browser was unavailable and system Chromium policy blocked all URLs. Adjusted Playwright to use /usr/bin/chromium; temporarily relaxed sandbox Chromium URL policy only to execute tests; restored policy afterward. E2E suite passed in mock mode: 3 passed.
