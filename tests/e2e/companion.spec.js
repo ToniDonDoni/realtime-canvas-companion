@@ -28,6 +28,16 @@ async function installBrowserAudioInstrumentation(page) {
   });
 }
 
+
+async function firstLogText(page) {
+  return page.locator('#eventLog li').first().innerText();
+}
+
+async function expectTimestampedLogEntry(locator, messagePart) {
+  await expect(locator).toContainText(messagePart);
+  await expect(locator).toHaveText(/^\[\d{2}:\d{2}:\d{2}\] /);
+}
+
 test('AC-FR001-1 visible controls are available on first load', async ({ page }) => {
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
@@ -38,6 +48,8 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
   await expect(page.getByRole('list')).toContainText('app ready');
+  await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
+  await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
 });
 
 test('AC-FR002 call connects, greets with audio, and stop disconnects', async ({ page }) => {
@@ -104,7 +116,7 @@ test('AC-FR005 newest log entries appear first and interval changes affect canva
   await page.mouse.move(box.x + 160, box.y + 120, { steps: 4 });
   await page.mouse.up();
 
-  await expect(page.locator('#eventLog li').first()).toContainText('drawing changed');
+  await expect(page.getByRole('list')).toContainText('drawing changed');
   await page.waitForTimeout(1500);
   expect(visionDescribeRequests).toBe(0);
 
@@ -137,6 +149,30 @@ async function drawStroke(page, fromX, fromY, toX, toY) {
   await page.mouse.move(box.x + toX, box.y + toY, { steps: 12 });
   await page.mouse.up();
 }
+
+
+test('AC-FR008 event log is timestamped, unnumbered, and newest-first', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await page.goto('/');
+  await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
+  await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
+
+  const firstBefore = await firstLogText(page);
+  expect(firstBefore).toMatch(/^\[\d{2}:\d{2}:\d{2}\] app ready$/);
+  expect(firstBefore).not.toMatch(/^\s*\d+\./);
+
+  const canvas = page.getByLabel('Drawing canvas');
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + 50, box.y + 50);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 80, { steps: 4 });
+  await page.mouse.up();
+
+  const newest = await firstLogText(page);
+  expect(newest).toMatch(/^\[\d{2}:\d{2}:\d{2}\] drawing changed$/);
+  expect(newest).not.toMatch(/^\s*\d+\./);
+});
 
 test('AC-FR007 draw, erase, and clear controls affect the visible canvas through user actions', async ({ page }) => {
   await installBrowserAudioInstrumentation(page);

@@ -14,3 +14,7 @@
 2026-07-07T00:00:03Z GREEN_IMPLEMENTATION Implemented visible Draw/Erase radio controls, Clear button, canvas erase mode, and full-canvas clear behavior.
 2026-07-07T00:00:04Z REGRESSION npm test -- --reporter=line passed: 5 browser E2E tests.
 2026-07-07T00:00:05Z PACKAGE Updated README and packaged realtime-canvas-companion-draw-erase-clear.zip.
+2026-07-07T00:00:06Z USER_INPUT_ADDITION Captured timestamped unnumbered newest-first event log requirement as append-only SPEC-DRAFT addition.
+2026-07-07T00:00:07Z RED_TEST_ADDED Added Playwright E2E tests for timestamped, unnumbered, newest-first event log; RED failed because entries were plain text such as "app ready".
+2026-07-07T00:00:08Z GREEN_IMPLEMENTATION Implemented HH:MM:SS timestamp prefix, changed event log from ordered to unnumbered list, kept prepend/newest-first rendering.
+2026-07-07T00:00:09Z REGRESSION npm test -- --reporter=line passed: 6 browser E2E tests.

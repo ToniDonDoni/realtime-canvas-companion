@@ -135,3 +135,19 @@ AC-FR007-4:
 - Then: the canvas becomes empty/cleared and the event log records that the canvas was cleared.
 - Boundary: browser end-to-end using visible control activation and canvas pixel inspection.
 - Not enough: directly calling clearCanvas or only checking that a Clear button exists.
+
+### FR-008 Timestamped newest-first event log without numbering
+
+AC-FR008-1:
+- Given: the app is opened in a browser.
+- When: events are recorded in the transcript/event log.
+- Then: each visible event includes a timestamp and event text, and no numeric list marker is shown.
+- Boundary: browser end-to-end with rendered UI/CSS inspection.
+- Not enough: a timestamp helper exists or event text is stored internally.
+
+AC-FR008-2:
+- Given: multiple events are recorded.
+- When: a later event is added.
+- Then: the later event appears as the first/top visible log entry.
+- Boundary: browser end-to-end with visible log ordering assertions.
+- Not enough: array order changes without proving visible rendered order.

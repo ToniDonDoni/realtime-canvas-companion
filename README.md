@@ -28,7 +28,18 @@ Open `http://localhost:5179`.
 npm test
 ```
 
-The tests use Playwright. In this sandbox I had to point Playwright at `/usr/bin/chromium` because downloading Playwright's bundled Chromium failed due DNS/CDN access. On a normal machine, `npx playwright install chromium` is enough.
+The tests use Playwright. `playwright.config.js` selects a browser executable by platform:
+
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE` wins when set explicitly;
+- macOS defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`;
+- Linux defaults to `/usr/bin/chromium`;
+- other platforms fall back to Playwright's bundled browser.
+
+If needed, install Playwright's browser with `npx playwright install chromium`, or override the executable path:
+
+```bash
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium npm test
+```
 
 ## Run in live OpenAI mode
 
@@ -84,3 +95,16 @@ The canvas now has three visible editing controls:
 - **Clear**: clears the whole canvas immediately.
 
 The app logs mode changes and clear actions at the top of the transcript/event list. These controls are covered by browser E2E tests that drive the visible UI and inspect the canvas pixels after real pointer gestures.
+
+## Event log behavior
+
+The transcript/event log is newest-first: the newest event is inserted at the top.
+Entries are unnumbered and use a local timestamp prefix:
+
+```text
+[14:03:27] assistant: Вижу рисунок: линии и штрихи.
+[14:03:26] sent: scene_summary.sent
+[14:03:25] canvas frame sent (interval: 5000ms)
+```
+
+`drawing changed` means the local canvas changed. `canvas frame sent` is the interval-driven send event; change the Canvas send interval control to verify cadence.

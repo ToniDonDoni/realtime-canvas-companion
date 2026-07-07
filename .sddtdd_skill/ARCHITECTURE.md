@@ -26,3 +26,7 @@ Primary test boundary is browser E2E with Playwright. Tests install browser-leve
 ## Canvas editing modes
 
 The rendered app owns a visible Draw/Erase mode selector and Clear button. `src/canvas.js` exposes a canvas controller with `setMode(mode)`, `clear()`, `hasChanged()`, `markSent()`, and `capture()`. Browser E2E tests must drive the visible controls and inspect canvas pixels after pointer gestures.
+
+## Timestamped event log
+
+The event log is rendered as an unnumbered list. Each UI-visible entry is prepended with a local `HH:MM:SS` timestamp generated at insertion time. Entries are inserted at the beginning of the rendered list so newest events are visible at the top without scrolling.

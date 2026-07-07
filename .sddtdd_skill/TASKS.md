@@ -11,3 +11,7 @@
 - [x] TASK-007 RED: Add browser E2E coverage for visible Draw/Erase/Clear controls and their user-observable canvas effects.
 - [x] TASK-008 GREEN: Implement Draw/Erase mode switching and Clear behavior.
 - [x] TASK-009 Run regression and package updated project.
+
+- [x] TASK-010 RED: Add browser E2E coverage for timestamped, unnumbered, newest-first event log entries.
+- [x] TASK-011 GREEN: Implement timestamped unnumbered event log rendering.
+- [x] TASK-012 Run regression and package updated project.

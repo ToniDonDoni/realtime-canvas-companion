@@ -20,9 +20,15 @@ let canvasState;
 let sendTimer;
 let connected = false;
 
+function timestamp() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
 function log(message) {
   const li = document.createElement('li');
-  li.textContent = message;
+  li.textContent = `[${timestamp()}] ${message}`;
   els.log.prepend(li);
 }
 

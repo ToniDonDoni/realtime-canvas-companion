@@ -20,3 +20,7 @@ Change transcript/event log ordering so newest entries appear at the top. Make c
 ## Raw user input 2026-07-07 ADDITION
 
 Add two canvas interaction modes: Draw and Erase, with a visible switch between them. Add a visible Clear button that clears the whole canvas. Write tests first, then implementation.
+
+## Raw user input 2026-07-07 ADDITION
+
+Change the transcript/event log so it does not show numeric ordering. Each event should show a timestamp and event text. Newest events must appear at the top of the visible log.
