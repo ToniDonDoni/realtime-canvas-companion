@@ -27,6 +27,11 @@ is the audio that is currently coming out of the speakers."
 
 ## Current scene update pipeline
 
+The image itself does **not** go into the Realtime WebRTC session. The browser
+first sends the canvas image to the backend vision endpoint. The backend asks a
+vision model to describe the image, and only the resulting short text summary is
+sent into the Realtime conversation.
+
 ```text
 user draws / pastes / erases / clears canvas
   -> canvas dirty flag becomes true
@@ -37,10 +42,69 @@ user draws / pastes / erases / clears canvas
   -> changed image is POSTed to /api/vision/describe
   -> backend sends image to the selected vision model
   -> backend returns a short text summary
-  -> frontend sends `screen_summary: ...` into the Realtime data channel
+  -> frontend sends `screen_summary: ...` as a text message into the Realtime data channel
   -> frontend immediately sends `response.create`
-  -> Realtime model produces text/data events and spoken audio
+  -> Realtime model answers using the current conversation context
+  -> the answer may include text/data events and spoken audio
 ```
+
+## How voice input and screen summaries are mixed
+
+There is one Realtime conversation session with two input paths:
+
+```text
+microphone audio track
+  -> OpenAI Realtime session
+  -> model receives the user's spoken turn
+
+screen_summary text over the data channel
+  -> OpenAI Realtime session
+  -> model receives an extra text message in the same conversation
+```
+
+The screen summary is not a separate assistant. It is an additional conversation
+item delivered to the same Realtime session that is also listening to the user's
+voice.
+
+When the frontend sends:
+
+```text
+conversation.item.create: user message "screen_summary: ..."
+response.create
+```
+
+it is effectively saying:
+
+```text
+Here is the latest visual context. Please produce a response now, using this
+context together with the rest of the conversation, including anything the user
+has said through the microphone.
+```
+
+So the model can answer because of:
+
+- the user's spoken audio turn;
+- the latest `screen_summary` text item;
+- both, if they are already present in the same Realtime conversation context.
+
+The current demo does not wait for a spoken user turn before sending a
+`screen_summary` response request. A changed canvas can trigger its own
+`response.create`, even if the user has not just spoken.
+
+Because the microphone/audio path and the data-channel/text path are independent,
+timing can overlap:
+
+```text
+assistant is still speaking an old response
+new screen_summary arrives over the data channel
+frontend sends response.create immediately
+new transcript/log events may arrive
+old audio may still be playing
+new audio plays after the old audio pipeline advances
+```
+
+This means the event log shows when text/control events arrive. It is not a
+reliable indicator of which audio segment is currently audible.
 
 ## Current queue policy
 
