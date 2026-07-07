@@ -64,6 +64,24 @@ export class OpenAIWebRTCTransport extends EventTarget {
     // playback, so transcript events can appear in the UI before speech finishes.
     this.dc = this.pc.createDataChannel('oai-events');
     this.dc.onmessage = (event) => this.handleEvent(event.data);
+    this.dc.onopen = () => {
+      // The realtime model otherwise tends to treat every screen summary as a
+      // fresh user turn and may greet repeatedly. These session instructions make
+      // visual updates behave like continuing context for the same conversation.
+      this.dc.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          instructions: `You are a continuous realtime canvas companion.
+Do not greet the user repeatedly.
+Do not say hello after the first assistant message in this session.
+Treat screen_summary messages as ongoing visual context, not as a new conversation start.
+When a screen_summary arrives, use it to ground the current conversation.
+If the user is speaking or has just spoken, answer the user's spoken question using the visual context.
+Be concise.`,
+        },
+      }));
+      this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'session.instructions.sent' } }));
+    };
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     const answerResponse = await fetch(`/api/realtime/session?model=${encodeURIComponent(this.model)}`, {
@@ -103,7 +121,16 @@ export class OpenAIWebRTCTransport extends EventTarget {
       item: {
         type: 'message',
         role: 'user',
-        content: [{ type: 'input_text', text: `screen_summary: ${summary}` }],
+        content: [{
+          type: 'input_text',
+          text: `Ongoing visual context update.
+
+screen_summary:
+${summary}
+
+Do not greet. Do not treat this as a new conversation.
+Use this only as visual grounding for the current or immediately preceding user turn.`,
+        }],
       },
     }));
     // `conversation.item.create` only adds context. `response.create` is the
