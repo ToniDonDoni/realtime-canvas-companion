@@ -106,6 +106,75 @@ new audio plays after the old audio pipeline advances
 This means the event log shows when text/control events arrive. It is not a
 reliable indicator of which audio segment is currently audible.
 
+## Tool calls and external actions
+
+The Realtime data channel can also carry tool-call lifecycle events. This means
+the model can do more than speak: it can request named actions that the app owns
+and validates.
+
+In this demo, tools are registered through `session.update` in the live Realtime
+transport. The current demo tools are intentionally simple:
+
+```text
+web_search
+  -> demo placeholder for a future backend web search action
+
+game_move
+  -> demo movement command for a player/knight character
+
+game_attack
+  -> demo attack command for a player/knight character
+
+game_defend
+  -> demo defensive command for shield, dodge, or hold actions
+```
+
+The model does not directly control the browser, operating system, or game. It
+requests a tool call over the data channel. The frontend receives that request,
+parses the arguments, runs the local/demo tool handler, logs the call, and sends a
+`function_call_output` item back to the Realtime session.
+
+```text
+user says: "move right"
+  -> Realtime model decides to call a tool
+  -> server event: response.function_call_arguments.delta
+  -> server event: response.function_call_arguments.done
+  -> frontend parses arguments such as {"direction":"right"}
+  -> frontend executes the demo handler for game_move
+  -> UI log records the tool call and result
+  -> frontend sends conversation.item.create with function_call_output
+  -> frontend sends response.create so the model can speak about the result
+```
+
+A successful demo call is visible in the event log as both Realtime server events
+and client-side tool output lines, for example:
+
+```text
+server: response.function_call_arguments.done
+sent: tool_output.sent
+assistant: Готово, персонаж сместился вправо.
+```
+
+For a real game integration, the demo handlers should be replaced with a narrow,
+validated command layer. For example, `game_move` could map to keyboard,
+gamepad, or engine commands only after checking that the command is allowed. The
+model should never execute arbitrary code or directly call browser/OS APIs.
+
+The important architecture point is that tool calls turn model intent into app
+owned events:
+
+```text
+model intent
+  -> typed tool call
+  -> app validation
+  -> app-owned side effect
+  -> function_call_output result
+  -> spoken/model follow-up
+```
+
+This is the same pattern that can later support real web search, game control,
+workflow actions, or other external effects while keeping the Realtime voice UX.
+
 ## Current queue policy
 
 The current implementation is intentionally simple:
@@ -186,14 +255,16 @@ This is simplest, but it can let the event log get ahead of the audible output.
 
 ## Files to inspect
 
-- `src/main.js`
+-- `src/main.js`
   - owns the user-visible application state;
   - starts/stops the call;
   - schedules canvas capture;
   - computes the frame checksum;
   - calls `/api/vision/describe`;
   - sends the returned summary to the realtime transport;
-  - writes the user-visible event log.
+  - writes the user-visible event log;
+  - logs Realtime server events and demo tool calls so external-action requests
+    can be inspected during live testing.
 
 - `src/realtime.js`
   - contains the mock Realtime transport and the live OpenAI WebRTC transport;
@@ -201,7 +272,10 @@ This is simplest, but it can let the event log get ahead of the audible output.
   - attaches the microphone audio track;
   - receives the assistant audio track;
   - creates the `oai-events` data channel;
+  - sends `session.update` with Realtime instructions and demo tool definitions;
   - sends `conversation.item.create` and `response.create`;
+  - listens for function-call events from the model;
+  - executes demo tool handlers and returns `function_call_output` items;
   - maps OpenAI data-channel events into UI events.
 
 - `src/canvas.js`
@@ -242,6 +316,24 @@ OPENAI_VISION_MODEL=gpt-5.4-nano
 
 ## Known limitation
 
+
 The checksum is computed over the captured PNG data URL. This is a practical demo
 choice because it is simple and catches identical canvas captures. It is not a
 semantic image comparison. Tiny visual or encoding changes produce a new checksum.
+
+## Tool-call limitations
+
+The current tool layer is a proof of wiring, not a full agent runtime.
+
+- `web_search` does not perform a real search yet; it returns a demo result.
+- `game_move`, `game_attack`, and `game_defend` do not press keys or control a
+  real game yet; they return demo action results.
+- The app currently sends `response.create` after returning tool output, so it
+  must avoid creating a second response while another response is still active.
+- Tool calls should be deduplicated by `call_id`, because the Realtime stream can
+  expose both argument-completion events and output-item lifecycle events for the
+  same logical function call.
+
+A production implementation should add an explicit action coordinator that owns
+response state, deduplication, validation, and the mapping from safe tool calls to
+real side effects.
