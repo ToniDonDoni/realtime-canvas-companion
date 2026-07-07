@@ -16,7 +16,7 @@
 
 - `server/index.js`: static file server plus API routes.
 - `POST /api/realtime/session`: accepts browser SDP in live mode and returns OpenAI SDP answer; mock mode returns mock SDP.
-- `POST /api/vision/describe`: accepts canvas data URL and returns a summary; live mode calls OpenAI Responses API with image input; mock mode returns deterministic text.
+- `POST /api/vision/describe`: accepts canvas data URL and returns a summary for `summary` context mode; live mode calls OpenAI Responses API with image input; mock mode returns deterministic text. `image` context mode bypasses this endpoint and sends `input_image` directly over the Realtime data channel.
 - `GET /api/config`: exposes safe runtime config only.
 
 ## Test boundaries
@@ -30,3 +30,7 @@ The rendered app owns a visible Draw/Erase mode selector and Clear button. `src/
 ## Timestamped event log
 
 The event log is rendered as an unnumbered list. Each UI-visible entry is prepended with a local `HH:MM:SS` timestamp generated at insertion time. Entries are inserted at the beginning of the rendered list so newest events are visible at the top without scrolling.
+
+## Canvas context modes
+
+`summary` mode keeps a two-model pipeline: canvas PNG -> backend vision summary -> Realtime text context. `image` mode uses the existing Realtime WebRTC data channel: canvas PNG -> `conversation.item.create` with `input_text` plus `input_image` -> `response.create`. The same dirty flag and checksum deduplication gate both modes.

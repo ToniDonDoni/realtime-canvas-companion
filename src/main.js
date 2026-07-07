@@ -5,6 +5,7 @@ const els = {
   model: document.querySelector('#modelSelect'),
   interval: document.querySelector('#intervalSelect'),
   visionModel: document.querySelector('#visionModelSelect'),
+  contextMode: document.querySelector('#canvasContextModeSelect'),
   call: document.querySelector('#callButton'),
   clearCanvas: document.querySelector('#clearCanvasButton'),
   canvasTools: document.querySelectorAll('input[name="canvasTool"]'),
@@ -57,6 +58,10 @@ function formatServerEventForLog(event) {
 
 function selectedIntervalMs() {
   return Number(els.interval.value);
+}
+
+function selectedCanvasContextMode() {
+  return els.contextMode?.value || 'summary';
 }
 
 function updateCompanionPaw(point) {
@@ -122,6 +127,16 @@ async function loadConfig() {
     if (model === config.defaultVisionModel) option.selected = true;
     els.visionModel.appendChild(option);
   }
+  els.contextMode.innerHTML = '';
+  const contextModes = config.canvasContextModes || ['summary', 'image'];
+  const defaultContextMode = config.defaultCanvasContextMode || 'summary';
+  for (const mode of contextModes) {
+    const option = document.createElement('option');
+    option.value = mode;
+    option.textContent = mode;
+    if (mode === defaultContextMode) option.selected = true;
+    els.contextMode.appendChild(option);
+  }
   if (config.keyStatus) log(`server key status: ${config.keyStatus}`);
   const matching = [...els.interval.options].find(o => Number(o.value) === config.defaultCanvasIntervalMs);
   if (matching) matching.selected = true;
@@ -179,9 +194,10 @@ async function stopCall() {
   await transport?.disconnect();
 }
 
-// Vision is a separate request from the Realtime voice session. The Realtime
-// model receives only the short text summary returned by this endpoint, not the
-// raw canvas image.
+// Summary context mode uses a separate request from the Realtime voice session.
+// The Realtime model receives only the short text summary returned by this
+// endpoint. Image context mode skips this and sends the raw canvas image directly
+// into the Realtime session over the data channel.
 async function describeCanvasFrame(imageDataUrl) {
   const res = await fetch('/api/vision/describe', {
     method: 'POST',
@@ -204,7 +220,10 @@ function scheduleCanvasSending() {
     // and paste image. If the user has not changed the canvas, there is no reason
     // to spend vision tokens.
     if (!connected || !canvasState.hasChanged()) return;
-    const imageDataUrl = canvasState.capture();
+    const contextMode = selectedCanvasContextMode();
+    const imageDataUrl = contextMode === 'image'
+      ? canvasState.captureRealtimeImage({ targetMaxBytes: transport.getSceneImageTargetBytes?.() })
+      : canvasState.capture();
     const checksum = checksumString(imageDataUrl);
     // A failed vision request still records the checksum. Otherwise the app
     // would retry the exact same unchanged image forever and burn money every
@@ -217,13 +236,18 @@ function scheduleCanvasSending() {
     lastSubmittedCanvasChecksum = checksum;
     log(`canvas frame sent (interval: ${interval}ms) checksum: ${checksum}`);
     try {
-      const summary = await describeCanvasFrame(imageDataUrl);
-      log(`vision summary: ${summary}`);
-      canvasState.markSent();
-      // This immediately creates a new Realtime response. It can happen while
-      // previous assistant audio is still playing; the browser/OpenAI audio path
-      // handles playback ordering.
-      await transport.sendSceneSummary(summary);
+      if (contextMode === 'image') {
+        canvasState.markSent();
+        // This immediately creates a new Realtime response. It can happen while
+        // previous assistant audio is still playing; the browser/OpenAI audio path
+        // handles playback ordering.
+        await transport.sendSceneImage(imageDataUrl);
+      } else {
+        const summary = await describeCanvasFrame(imageDataUrl);
+        log(`vision summary: ${summary}`);
+        canvasState.markSent();
+        await transport.sendSceneSummary(summary);
+      }
     } catch (error) {
       log(`vision error: ${error.message || error}`);
       console.error('vision error', error);
@@ -244,6 +268,9 @@ els.model.addEventListener('change', () => {
 });
 els.visionModel.addEventListener('change', () => {
   log(`vision model selected: ${els.visionModel.value}`);
+});
+els.contextMode.addEventListener('change', () => {
+  log(`canvas context mode selected: ${selectedCanvasContextMode()}`);
 });
 
 canvasState = createDrawingCanvas(els.canvas, () => log('drawing changed'), {

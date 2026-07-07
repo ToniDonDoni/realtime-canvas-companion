@@ -33,6 +33,20 @@ export class MockRealtimeTransport extends EventTarget {
     }, 80);
   }
 
+  getSceneImageTargetBytes() {
+    return 180000;
+  }
+
+  async sendSceneImage(imageDataUrl) {
+    if (!this.connected) return;
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_image.sent' } }));
+    window.setTimeout(async () => {
+      if (!this.connected) return;
+      await playMockVoice();
+      this.dispatchEvent(new CustomEvent('assistant_message', { detail: { text: 'Вижу картинку канвы напрямую.' } }));
+    }, 80);
+  }
+
   async disconnect() {
     this.connected = false;
     this.dispatchEvent(new CustomEvent('disconnected'));
@@ -43,6 +57,11 @@ export class MockRealtimeTransport extends EventTarget {
 // intentionally separate: microphone/speaker audio travels on media tracks, while
 // text events, transcripts, errors, and scene summaries travel on the data
 // channel.
+const DEFAULT_DATA_CHANNEL_MAX_MESSAGE_BYTES = 256 * 1024;
+const SCENE_IMAGE_MESSAGE_FRACTION = 0.8;
+const SCENE_IMAGE_JSON_OVERHEAD_BYTES = 8192;
+const MIN_SCENE_IMAGE_TARGET_BYTES = 16 * 1024;
+
 export class OpenAIWebRTCTransport extends EventTarget {
   constructor({ model, audioElement }) {
     super();
@@ -53,6 +72,20 @@ export class OpenAIWebRTCTransport extends EventTarget {
     this.stream = undefined;
   }
 
+  getDataChannelMaxMessageBytes() {
+    const negotiatedMaxMessageSize = this.pc?.sctp?.maxMessageSize;
+    if (Number.isFinite(negotiatedMaxMessageSize) && negotiatedMaxMessageSize > 0) {
+      return negotiatedMaxMessageSize;
+    }
+    return DEFAULT_DATA_CHANNEL_MAX_MESSAGE_BYTES;
+  }
+
+  getSceneImageTargetBytes() {
+    const maxMessageBytes = this.getDataChannelMaxMessageBytes();
+    const safeEnvelopeBytes = Math.floor(maxMessageBytes * SCENE_IMAGE_MESSAGE_FRACTION);
+    return Math.max(MIN_SCENE_IMAGE_TARGET_BYTES, safeEnvelopeBytes - SCENE_IMAGE_JSON_OVERHEAD_BYTES);
+  }
+
   buildSessionUpdateEvent() {
     return {
       type: 'session.update',
@@ -61,8 +94,8 @@ export class OpenAIWebRTCTransport extends EventTarget {
         instructions: `You are a continuous realtime canvas companion.
 Do not greet the user repeatedly.
 Do not say hello after the first assistant message in this session.
-Treat screen_summary messages as ongoing visual context, not as a new conversation start.
-When a screen_summary arrives, use it to ground the current conversation.
+Treat screen_summary messages and direct canvas images as ongoing visual context, not as a new conversation start.
+When a screen_summary or canvas image arrives, use it to ground the current conversation.
 If the user is speaking or has just spoken, answer the user's spoken question using the visual context.
 You have tools. Use the canvas tools to control a visible pink cat-paw cursor on the shared canvas. The user can draw with the mouse; you can draw with the paw. Use canvas_cursor_move to move without drawing, canvas_draw_line to draw a colored line while moving, and canvas_erase_line to erase while moving. Prefer short, deliberate strokes. When the user asks you to draw or edit the canvas, call the relevant canvas tool instead of only describing what you would do. When the user gives a direct game command, call the matching game tool instead of saying you cannot control the game. Use game_move for movement, game_attack for attacks, and game_defend for shield, dodge, or defensive commands. When the user says search, google, find online, or asks for fresh external facts, call web_search. Describe tool results briefly after they complete.
 Be concise.`,
@@ -333,7 +366,7 @@ Be concise.`,
   }
 
   async sendSceneSummary(summary) {
-    // Current policy: every accepted visual summary immediately asks the model for
+    // Current policy: every accepted visual update immediately asks the model for
     // a response. This does not wait for previous audio to finish. A production
     // companion may instead queue, coalesce, or cancel responses.
     if (!this.dc || this.dc.readyState !== 'open') return;
@@ -358,6 +391,48 @@ Use this only as visual grounding for the current or immediately preceding user 
     // explicit trigger that asks the realtime model to answer.
     this.dc.send(JSON.stringify({ type: 'response.create' }));
     this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_summary.sent', summary } }));
+  }
+
+
+
+  async sendSceneImage(imageDataUrl) {
+    // Image context mode skips the separate vision-summary endpoint and sends the
+    // captured canvas snapshot straight into the Realtime conversation over the
+    // WebRTC data channel. main.js/canvas.js downscale this first using an 80%
+    // envelope of pc.sctp.maxMessageSize so RTCDataChannel.send() does not throw
+    // on large pasted game frames.
+    if (!this.dc || this.dc.readyState !== 'open') return;
+    const event = {
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: `Ongoing visual context update.
+
+canvas_image:
+The attached image is the latest shared canvas frame.
+
+Do not greet. Do not treat this as a new conversation.
+Use this only as visual grounding for the current or immediately preceding user turn. If drawing on the shared canvas would help, call canvas_cursor_move, canvas_draw_line, or canvas_erase_line.`,
+          },
+          {
+            type: 'input_image',
+            image_url: imageDataUrl,
+          },
+        ],
+      },
+    };
+    const payload = JSON.stringify(event);
+    const safeEnvelopeBytes = Math.floor(this.getDataChannelMaxMessageBytes() * SCENE_IMAGE_MESSAGE_FRACTION);
+    if (payload.length > safeEnvelopeBytes) {
+      throw new Error(`Canvas image payload is ${payload.length} bytes, above safe RTCDataChannel envelope ${safeEnvelopeBytes} bytes`);
+    }
+    this.dc.send(payload);
+    this.dc.send(JSON.stringify({ type: 'response.create' }));
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_image.sent', bytes: payload.length, safeEnvelopeBytes } }));
   }
 
   async disconnect() {

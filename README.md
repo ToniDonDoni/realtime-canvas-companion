@@ -13,11 +13,11 @@ One-page browser demo for a realtime AI voice companion that can listen, speak, 
 ## What is included
 
 - Browser SPA with visible `Call` / `Stop` flow.
-- Model selector and canvas-send interval selector.
+- Model selector, canvas-send interval selector, and canvas context mode selector (`summary` or `image`).
 - Mouse drawing canvas.
 - Mock realtime transport for deterministic tests without an OpenAI key.
 - Live OpenAI mode using WebRTC SDP through a backend endpoint.
-- Canvas frame description bridge: browser sends canvas data URL to `/api/vision/describe`; backend returns a concise summary; the summary is sent into the realtime session.
+- Canvas context bridge with two modes: `summary` sends the canvas through `/api/vision/describe` first and forwards text into Realtime; `image` sends a downscaled JPEG canvas snapshot directly into the Realtime data channel as `input_image`, avoiding oversized WebRTC data-channel messages.
 - Playwright E2E tests that drive the same user journey: open app, see controls, call, hear/observe greeting, draw, wait for canvas send, observe assistant comment, verify newest-first event ordering, verify interval cadence changes, stop.
 - SDDTDD artifacts under `.sddtdd_skill/`.
 
@@ -65,6 +65,7 @@ OPENAI_API_KEY=sk-...
 OPENAI_REALTIME_MODEL=gpt-realtime-2.1
 OPENAI_VISION_MODEL=gpt-5.1-mini
 OPENAI_REALTIME_VOICE=marin
+CANVAS_CONTEXT_MODE=summary
 ```
 
 Then:
@@ -79,13 +80,19 @@ The browser never sees the standard OpenAI API key. It posts its SDP offer to `/
 
 ```text
 Browser microphone -> WebRTC audio track -> OpenAI realtime model -> remote audio track -> browser audio element
-Browser canvas -> /api/vision/describe -> short summary -> realtime data channel -> assistant comment
+Browser canvas -> summary mode -> /api/vision/describe -> short summary -> realtime data channel -> assistant comment
+Browser canvas -> image mode -> realtime data channel input_image -> assistant comment
 Browser controls -> app state -> realtime transport
 ```
 
-## Important live-mode caveat
+## Canvas context modes
 
-The realtime session receives text scene summaries, not raw canvas pixels. Raw canvas pixels are handled by the backend vision endpoint first. This keeps the realtime voice connection focused on low-latency audio while still letting the companion comment on visual state.
+The **Canvas context mode** selector controls how changed canvas frames are sent:
+
+- `summary`: the browser posts the canvas PNG data URL to `/api/vision/describe`; the backend asks the selected Vision model for one short Russian summary; that summary is sent into the Realtime data channel as text.
+- `image`: the browser skips `/api/vision/describe`, downscales the canvas to a compact JPEG data URL, sends it into the Realtime data channel as an `input_image` conversation item, then triggers `response.create`.
+
+Use `summary` for cheaper, quieter, more predictable updates. Use `image` when the realtime model should inspect the pixels directly.
 
 
 ## Event log and interval behavior
@@ -122,7 +129,8 @@ Entries are unnumbered and use a local timestamp prefix:
 The app has two independent model selectors:
 
 - **Model** controls the realtime voice session model. When the user presses **Call**, the selected value is sent to `/api/realtime/session?model=...`.
-- **Vision model** controls the model used by `/api/vision/describe` for canvas image summaries. The selected value is included in the canvas describe request body as `model`.
+- **Vision model** controls the model used by `/api/vision/describe` for canvas image summaries. The selected value is included in the canvas describe request body as `model`. It only matters in `summary` context mode.
+- **Canvas context mode** controls whether canvas changes go through the summary pipeline or are sent directly to Realtime as an image.
 
 Default low-cost live configuration:
 
@@ -154,3 +162,7 @@ Available companion canvas tools in live mode:
 - `canvas_erase_line`: erase along a straight line from the paw in a direction and move the paw to the endpoint.
 
 The browser applies these tool calls locally, logs them in the event list, and sends a function-call output back over the realtime data channel. The same canvas-send cadence and checksum deduplication apply after companion-drawn changes.
+
+### Canvas image context sizing
+
+In `image` canvas context mode the browser sends a compressed JPEG snapshot directly over the Realtime WebRTC data channel. The app reads `pc.sctp.maxMessageSize`, uses an 80% safe envelope for the final JSON message, and asks the canvas capture layer to lower JPEG quality and resolution until the payload fits. This avoids `RTCDataChannel.send()` failures for pasted game screenshots.

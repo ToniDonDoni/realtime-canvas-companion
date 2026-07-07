@@ -29,3 +29,6 @@ FR-011 GREEN: Implemented paste handler and aspect-fit canvas replacement.
 
 2026-07-07 FR013: Appended requirement for checksum-based unchanged canvas frame deduplication before vision calls. Added RED E2E user journey, implemented checksum skip, and prepared regression evidence.
 2026-07-07 FR013: Bumped visible app version to 0.2.2 for checksum dedupe build.
+FR-017 ADDITION captured: image context mode must size frames from WebRTC SCTP maxMessageSize using an 80% envelope, with tests and version bump.
+FR-017 RED: Fake WebRTC now enforces max-message-size and image mode test asserts the final Realtime payload fits the 80% envelope.
+FR-017 GREEN: Realtime transport exposes image target bytes from pc.sctp.maxMessageSize, canvas capture adapts JPEG quality/dimensions, and app version bumped to 0.2.6.

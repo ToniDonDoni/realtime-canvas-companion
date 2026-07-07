@@ -44,3 +44,17 @@
 3. GREEN: Implement the rendered paw cursor overlay and canvas helper methods for move/draw/erase.
 4. GREEN: Add realtime tool schemas and dispatch tool-call events into the canvas layer.
 5. REGRESSION: Run the E2E suite.
+
+## Task FR-016 Canvas context mode
+
+1. RED: Add E2E coverage for a visible Canvas context mode selector with `summary` default and `image` option.
+2. RED: Add E2E coverage proving image mode sends a changed canvas directly as a Realtime `input_image` event and does not call `/api/vision/describe`.
+3. GREEN: Expose canvas context modes from `/api/config` and support `CANVAS_CONTEXT_MODE`.
+4. GREEN: Implement `sendSceneImage(imageDataUrl)` on mock and live realtime transports.
+5. REGRESSION: Run the E2E suite.
+
+## Task FR-017 Adaptive WebRTC image payload sizing
+1. RED: Extend the fake WebRTC E2E transport with an SCTP `maxMessageSize` and make its data channel throw on oversized sends.
+2. RED: Assert image context mode sends a final Realtime payload no larger than 80% of the negotiated message size.
+3. GREEN: Expose the transport image target from `pc.sctp.maxMessageSize` and compress/downscale canvas JPEG frames against that target.
+4. GREEN: Bump the app version and visible version test expectations.

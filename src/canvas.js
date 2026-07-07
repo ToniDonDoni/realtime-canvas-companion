@@ -184,10 +184,51 @@ export function createDrawingCanvas(canvas, onDraw, options = {}) {
 
   notifyCompanionCursorChanged();
 
+  function captureScaledImage({ maxWidth = 768, maxHeight = 768, targetMaxBytes = 180000 } = {}) {
+    // Realtime image mode is bounded by RTCDataChannel.send() message limits.
+    // The caller passes a target derived from the live SCTP maxMessageSize, so
+    // this function adapts both JPEG quality and dimensions until the data URL is
+    // small enough for the current peer connection instead of relying on one
+    // hard-coded image size.
+    const safeTargetMaxBytes = Number.isFinite(Number(targetMaxBytes)) && Number(targetMaxBytes) > 0
+      ? Number(targetMaxBytes)
+      : 180000;
+    const baseScale = Math.min(1, maxWidth / canvas.width, maxHeight / canvas.height);
+    const baseWidth = Math.max(1, Math.round(canvas.width * baseScale));
+    const baseHeight = Math.max(1, Math.round(canvas.height * baseScale));
+    const scratch = document.createElement('canvas');
+
+    function render(width, height, quality) {
+      scratch.width = width;
+      scratch.height = height;
+      const scratchCtx = scratch.getContext('2d');
+      scratchCtx.fillStyle = '#fff';
+      scratchCtx.fillRect(0, 0, width, height);
+      scratchCtx.drawImage(canvas, 0, 0, width, height);
+      return scratch.toDataURL('image/jpeg', quality);
+    }
+
+    let best = render(baseWidth, baseHeight, 0.72);
+    const scales = [1, 0.85, 0.7, 0.55, 0.42, 0.32, 0.24];
+    const qualities = [0.82, 0.72, 0.62, 0.52, 0.42, 0.34, 0.28];
+
+    for (const scale of scales) {
+      const width = Math.max(1, Math.round(baseWidth * scale));
+      const height = Math.max(1, Math.round(baseHeight * scale));
+      for (const quality of qualities) {
+        const candidate = render(width, height, quality);
+        best = candidate;
+        if (candidate.length <= safeTargetMaxBytes) return candidate;
+      }
+    }
+    return best;
+  }
+
   return {
     hasChanged: () => changed,
     markSent: () => { changed = false; },
     capture: () => canvas.toDataURL('image/png'),
+    captureRealtimeImage: captureScaledImage,
     setMode: (nextMode) => {
       if (nextMode !== 'draw' && nextMode !== 'erase') {
         throw new Error(`Unsupported canvas mode: ${nextMode}`);

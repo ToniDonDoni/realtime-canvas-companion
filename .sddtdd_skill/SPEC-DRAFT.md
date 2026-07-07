@@ -35,3 +35,9 @@ ADDITION: The app must avoid sending unchanged canvas images to the vision model
 ## Raw user input 2026-07-07 ADDITION
 
 ADDITION: Add a second AI-controlled cursor on the canvas, visually represented as a pink cat paw. The paw starts in the center of the canvas. The realtime companion must get tools to move the paw up/down/left/right by a requested distance, draw straight lines in any requested color while moving the paw, and erase while moving the paw. The human user still draws with the mouse; the companion draws through realtime tool calls. Canvas images continue to be sent to the companion so the conversation and tool-driven drawing can be interactive. Tests must be written first.
+
+## Raw user input 2026-07-07 ADDITION
+
+ADDITION FR-016: Add a Canvas context mode switch with `summary` and `image`. In `summary` mode, keep the current canvas -> vision summary -> realtime text flow. In `image` mode, skip the vision summary endpoint and send the canvas image directly into the OpenAI Realtime WebRTC data channel as image input. Tests must prove image mode does not call `/api/vision/describe` and sends an `input_image` realtime conversation item.
+
+ADDITION FR-017: In image context mode, do not use a fixed canvas image size. Derive the safe image payload target from the active WebRTC SCTP `maxMessageSize`, using an 80% envelope, and compress/downscale the canvas snapshot until the final Realtime data-channel message fits that envelope. Bump the visible app version and add regression coverage that would fail when the image payload exceeds the safe envelope.
