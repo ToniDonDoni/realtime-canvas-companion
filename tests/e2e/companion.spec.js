@@ -18,10 +18,18 @@ async function installBrowserAudioInstrumentation(page) {
         window.__audioEvents.push('audio-context-created');
         this.destination = {};
         this.currentTime = 0;
+        this.sampleRate = 48000;
       }
       async resume() { window.__audioEvents.push('audio-context-resumed'); }
       createOscillator() { return new FakeOscillator(); }
       createGain() { return new FakeGain(); }
+      createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+      createScriptProcessor() {
+        const processor = { onaudioprocess: null, connect() {}, disconnect() {} };
+        window.__fakeScriptProcessor = processor;
+        return processor;
+      }
+      async close() {}
     }
     window.AudioContext = FakeAudioContext;
     window.webkitAudioContext = FakeAudioContext;
@@ -46,14 +54,118 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByLabel('Canvas send interval')).toBeVisible();
   await expect(page.getByLabel('Canvas context mode')).toBeVisible();
   await expect(page.getByLabel('Canvas context mode')).toHaveValue('summary');
+  await expect(page.getByLabel('Realtime engine')).toHaveValue('webrtc');
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.6');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.6');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.2');
+  await expect(page.getByRole('list')).toContainText('app version: 0.3.2');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
+});
+
+test('AC-FR018 WebSocket engine selector creates grouped contextual turns', async ({ page }) => {
+  await installBrowserAudioInstrumentation(page);
+  await page.addInitScript(() => {
+    class FakeWebSocket extends EventTarget {
+      static OPEN = 1;
+      constructor(url) {
+        super();
+        this.url = url;
+        this.readyState = FakeWebSocket.OPEN;
+        this.sent = [];
+        window.__lastFakeWebSocket = this;
+        queueMicrotask(() => this.dispatchEvent(new Event('open')));
+      }
+      send(raw) { this.sent.push(JSON.parse(raw)); }
+      close() {
+        this.readyState = 3;
+        this.dispatchEvent(new CloseEvent('close'));
+      }
+    }
+    window.WebSocket = FakeWebSocket;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) },
+    });
+  });
+  await page.route('**/api/config', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        mode: 'live',
+        version: '0.3.2',
+        realtimeModels: ['gpt-realtime-2.1-mini'],
+        realtimeTransports: ['webrtc', 'websocket'],
+        defaultRealtimeTransport: 'webrtc',
+        visionModels: ['gpt-5.4-nano'],
+        canvasContextModes: ['summary', 'image'],
+        defaultRealtimeModel: 'gpt-realtime-2.1-mini',
+        defaultVisionModel: 'gpt-5.4-nano',
+        defaultVoice: 'marin',
+        defaultCanvasIntervalMs: 1000,
+        defaultCanvasContextMode: 'summary',
+        keyStatus: 'test-key',
+      }),
+    });
+  });
+  await page.route('**/api/vision/describe', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ summary: 'A red square in the canvas center.' }),
+    });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Realtime engine').selectOption('websocket');
+  await expect(page.locator('#eventLog li').first()).toContainText('realtime engine selected: websocket');
+  await page.getByRole('button', { name: 'Call' }).click();
+  await expect(page.locator('#statusBadge')).toHaveText('connected');
+  await expect(page.getByRole('list')).toContainText('connected via websocket');
+  expect(await page.evaluate(() => window.__lastFakeWebSocket.url)).toContain('/api/realtime/ws?model=');
+
+  await drawStroke(page, 100, 100, 220, 180);
+  await expect(page.getByRole('list')).toContainText('sent: scene_summary.sent', { timeout: 2500 });
+  const contextualTurn = await page.evaluate(() => window.__lastFakeWebSocket.sent.find((event) => (
+    event.type === 'app.turn' && event.context?.screen_summary
+  )));
+  expect(contextualTurn.turn_id).toMatch(/^turn-/);
+  expect(contextualTurn.context.screen_summary).toBe('A red square in the canvas center.');
+  expect(contextualTurn.events.map((event) => event.type)).toEqual([
+    'conversation.item.create',
+    'response.create',
+  ]);
+
+  await page.evaluate(() => {
+    const voiced = new Float32Array(4096).fill(0.1);
+    window.__fakeScriptProcessor.onaudioprocess({ inputBuffer: { getChannelData: () => voiced } });
+  });
+  await page.waitForTimeout(750);
+  await page.evaluate(() => {
+    const silence = new Float32Array(4096);
+    window.__fakeScriptProcessor.onaudioprocess({ inputBuffer: { getChannelData: () => silence } });
+  });
+  const audioTurns = await page.evaluate(() => window.__lastFakeWebSocket.sent.filter((event) => (
+    event.type === 'app.turn' && event.events.some((item) => item.type.startsWith('input_audio_buffer.'))
+  )));
+  expect(audioTurns.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(audioTurns.map((turn) => turn.turn_id)).size).toBe(1);
+  expect(audioTurns[0].context.screen_summary).toBe('A red square in the canvas center.');
+  expect(audioTurns.flatMap((turn) => turn.events).map((event) => event.type)).toEqual([
+    'conversation.item.create',
+    'input_audio_buffer.append',
+    'input_audio_buffer.append',
+    'input_audio_buffer.commit',
+    'response.create',
+  ]);
+
+  await page.evaluate(() => window.__lastFakeWebSocket.close());
+  await expect(page.locator('#statusBadge')).toHaveText('disconnected');
+  await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
+  expect(await page.evaluate(() => window.__fakeScriptProcessor.onaudioprocess === null)).toBe(true);
 });
 
 test('AC-FR002 call connects, greets with audio, and stop disconnects', async ({ page }) => {
@@ -208,8 +320,8 @@ test('AC-FR012 app version is visible on screen and in the event log', async ({ 
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
 
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.2.6');
-  await expect(page.getByRole('list')).toContainText('app version: 0.2.6');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.2');
+  await expect(page.getByRole('list')).toContainText('app version: 0.3.2');
 });
 
 async function installFakeWebRTC(page) {
@@ -270,7 +382,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.6',
+        version: '0.3.2',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -306,7 +418,7 @@ test('AC-FR014 Realtime server events are visible in the event log', async ({ pa
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.6',
+        version: '0.3.2',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -357,7 +469,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'mock',
-        version: '0.2.6',
+        version: '0.3.2',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -475,7 +587,7 @@ test('AC-FR016 image context mode sends canvas snapshots directly over Realtime 
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.6',
+        version: '0.3.2',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         canvasContextModes: ['summary', 'image'],
@@ -556,7 +668,7 @@ test('AC-FR015 companion paw cursor is visible, starts centered, and realtime ca
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.2.6',
+        version: '0.3.2',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',

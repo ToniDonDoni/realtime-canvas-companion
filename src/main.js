@@ -3,6 +3,7 @@ import { createRealtimeTransport } from './realtime.js';
 
 const els = {
   model: document.querySelector('#modelSelect'),
+  engine: document.querySelector('#realtimeEngineSelect'),
   interval: document.querySelector('#intervalSelect'),
   visionModel: document.querySelector('#visionModelSelect'),
   contextMode: document.querySelector('#canvasContextModeSelect'),
@@ -119,6 +120,18 @@ async function loadConfig() {
     if (model === config.defaultRealtimeModel) option.selected = true;
     els.model.appendChild(option);
   }
+  els.engine.innerHTML = '';
+  // The server controls the allowed engines so deployments can expose only the
+  // transports they support without changing browser code.
+  const transports = config.realtimeTransports || ['webrtc'];
+  const defaultTransport = config.defaultRealtimeTransport || transports[0];
+  for (const engine of transports) {
+    const option = document.createElement('option');
+    option.value = engine;
+    option.textContent = engine;
+    if (engine === defaultTransport) option.selected = true;
+    els.engine.appendChild(option);
+  }
   els.visionModel.innerHTML = '';
   for (const model of config.visionModels) {
     const option = document.createElement('option');
@@ -143,14 +156,14 @@ async function loadConfig() {
 }
 
 // Transport events are normalized into UI events here so the rest of the app
-// does not need to care whether it is talking to the mock transport or the live
-// OpenAI WebRTC transport.
+// does not need to care whether it is using mock, WebRTC, or WebSocket.
 function wireTransport(t) {
   t.addEventListener('connected', (event) => {
     connected = true;
     els.status.textContent = 'connected';
     els.call.textContent = 'Stop';
     log(`connected with model ${event.detail.model}`);
+    log(`connected via ${event.detail.engine || els.engine.value}`);
     scheduleCanvasSending();
   });
   t.addEventListener('assistant_message', (event) => log(`assistant: ${event.detail.text}`));
@@ -176,7 +189,13 @@ function wireTransport(t) {
 }
 
 async function startCall() {
-  transport = createRealtimeTransport({ mode: config.mode, model: els.model.value, audioElement: els.audio });
+  transport = createRealtimeTransport({
+    mode: config.mode,
+    model: els.model.value,
+    audioElement: els.audio,
+    engine: els.engine.value,
+    voice: config.defaultVoice,
+  });
   wireTransport(transport);
   els.status.textContent = 'connecting';
   try {
@@ -265,6 +284,9 @@ els.interval.addEventListener('change', () => {
 });
 els.model.addEventListener('change', () => {
   log(`realtime model selected: ${els.model.value}`);
+});
+els.engine.addEventListener('change', () => {
+  log(`realtime engine selected: ${els.engine.value}`);
 });
 els.visionModel.addEventListener('change', () => {
   log(`vision model selected: ${els.visionModel.value}`);

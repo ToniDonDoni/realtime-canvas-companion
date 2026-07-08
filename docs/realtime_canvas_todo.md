@@ -30,6 +30,32 @@ The assistant draws inaccurately because the realtime orchestration is too noisy
    - No absolute geometry tools like `move_to`, `draw_to`, `draw_rect`.
    - Result: model estimates long relative movements and produces messy boxes.
 
+## Target architecture: selectable Realtime transports
+
+The application should support two interchangeable live Realtime engines behind
+one browser-facing transport contract:
+
+- `webrtc`: keep the current low-latency browser-to-OpenAI media path, with JSON
+  control events carried by the WebRTC data channel.
+- `websocket`: route ordered Realtime JSON events through the application server,
+  which owns the authenticated upstream OpenAI WebSocket connection and never
+  exposes `OPENAI_API_KEY` to the browser.
+
+The browser must expose an engine selector before a call starts and construct only
+the selected engine. Both engines must emit the same application events so the UI,
+canvas capture loop, tools, and event log remain transport-independent.
+
+The WebSocket engine's final goal is deterministic turn grouping. Every committed
+user turn should have an application-owned `turn_id` and a context snapshot. Audio
+chunks, user text, canvas summary/image context, commit, and response request for
+that turn must be observable as one ordered event group instead of relying on the
+relative timing of an independent media stream and control channel.
+
+Before implementation, add tests that prove the transport contract and selector.
+Use a local mock OpenAI WebSocket server to verify the full browser -> application
+server -> mock upstream path, including ordered grouped events and a grouped mock
+response. No live OpenAI key or paid request may be required by the test suite.
+
 ## Fix plan
 
 1. Add tool-call deduplication by `call_id` / item id.

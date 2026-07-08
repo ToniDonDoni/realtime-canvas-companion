@@ -220,3 +220,26 @@ AC-FR015-4:
 - Then: visible/non-empty canvas content is reduced and the paw moves to the erase endpoint.
 - Boundary: browser end-to-end with canvas pixel inspection.
 - Not enough: an erase tool schema exists without a rendered canvas effect.
+
+## FR-018 Selectable WebRTC and WebSocket realtime engines
+
+AC-FR018-1:
+- Given: the app is opened in a browser.
+- When: the first screen is displayed.
+- Then: the user can select either `webrtc` or `websocket`, with `webrtc` selected by default.
+- Boundary: browser end-to-end.
+- Not enough: a transport class exists without a visible selector.
+
+AC-FR018-2:
+- Given: live mode is configured and the user selects `websocket`.
+- When: the user starts a call and a canvas summary is produced.
+- Then: the browser opens `/api/realtime/ws`, sends one `app.turn` with a generated `turn_id`, includes the context snapshot, and orders the context item before `response.create`.
+- Boundary: browser end-to-end with fake WebSocket and microphone boundaries.
+- Not enough: checking a selector value or calling a transport method directly.
+
+AC-FR018-3:
+- Given: the application server is connected to a mock OpenAI WebSocket server.
+- When: a contextual audio turn is sent through the application WebSocket endpoint.
+- Then: the mock receives context, audio append, commit, and response request in order with correlated event IDs; the client receives the mock grouped response; and the OpenAI key is sent only on the server-to-upstream connection.
+- Boundary: backend integration with real local WebSocket connections and mock upstream.
+- Not enough: mocking the proxy forwarding method in process.

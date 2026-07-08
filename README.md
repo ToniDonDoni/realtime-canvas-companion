@@ -13,10 +13,10 @@ One-page browser demo for a realtime AI voice companion that can listen, speak, 
 ## What is included
 
 - Browser SPA with visible `Call` / `Stop` flow.
-- Model selector, canvas-send interval selector, and canvas context mode selector (`summary` or `image`).
+- Model, realtime engine, canvas-send interval, and canvas context mode selectors.
 - Mouse drawing canvas.
 - Mock realtime transport for deterministic tests without an OpenAI key.
-- Live OpenAI mode using WebRTC SDP through a backend endpoint.
+- Live OpenAI mode using selectable WebRTC or server-proxied WebSocket transport.
 - Canvas context bridge with two modes: `summary` sends the canvas through `/api/vision/describe` first and forwards text into Realtime; `image` sends a downscaled JPEG canvas snapshot directly into the Realtime data channel as `input_image`, avoiding oversized WebRTC data-channel messages.
 - Playwright E2E tests that drive the same user journey: open app, see controls, call, hear/observe greeting, draw, wait for canvas send, observe assistant comment, verify newest-first event ordering, verify interval cadence changes, stop.
 - SDDTDD artifacts under `.sddtdd_skill/`.
@@ -36,7 +36,11 @@ Open `http://localhost:5179`.
 npm test
 ```
 
-The tests use Playwright. `playwright.config.js` selects a browser executable by platform:
+`npm test` runs the local WebSocket integration test first and then the Playwright
+browser suite. Run them independently with `npm run test:integration` and
+`npm run test:e2e`.
+
+`playwright.config.js` selects a browser executable by platform:
 
 - `PLAYWRIGHT_CHROMIUM_EXECUTABLE` wins when set explicitly;
 - macOS defaults to `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`;
@@ -65,6 +69,7 @@ OPENAI_API_KEY=sk-...
 OPENAI_REALTIME_MODEL=gpt-realtime-2.1
 OPENAI_VISION_MODEL=gpt-5.1-mini
 OPENAI_REALTIME_VOICE=marin
+OPENAI_REALTIME_TRANSPORT=webrtc
 CANVAS_CONTEXT_MODE=summary
 ```
 
@@ -74,7 +79,9 @@ Then:
 npm start
 ```
 
-The browser never sees the standard OpenAI API key. It posts its SDP offer to `/api/realtime/session`; the backend forwards SDP and session config to OpenAI `/v1/realtime/calls` and returns the SDP answer.
+The browser never sees the standard OpenAI API key. WebRTC posts its SDP offer to
+`/api/realtime/session`. WebSocket connects to `/api/realtime/ws`, and the backend
+opens the authenticated upstream OpenAI WebSocket connection.
 
 ## Data flow
 
@@ -84,6 +91,18 @@ Browser canvas -> summary mode -> /api/vision/describe -> short summary -> realt
 Browser canvas -> image mode -> realtime data channel input_image -> assistant comment
 Browser controls -> app state -> realtime transport
 ```
+
+## Realtime engines
+
+- `webrtc` is the default low-latency browser media path. Microphone and assistant audio use media tracks; JSON events use the data channel.
+- `websocket` sends 24 kHz PCM16 audio and JSON events through the application server. The browser groups context, audio, commit, and response events under an application-owned `turn_id`; the server translates that envelope into ordered OpenAI Realtime events.
+
+Use WebSocket when explicit turn/context correlation and server-side observability
+matter more than WebRTC's built-in media handling.
+
+Per-turn WebSocket forwarding logs are disabled by default because audio chunks
+are high-frequency. Set `VERBOSE_LOGS=1` only when individual forwarded event
+groups are needed for protocol diagnostics.
 
 ## Canvas context modes
 

@@ -4,15 +4,16 @@ import { playMockVoice } from './audio.js';
 // connect, receive assistant messages, send scene summaries, and disconnect.
 // E2E tests use it to prove the user journey without spending OpenAI tokens.
 export class MockRealtimeTransport extends EventTarget {
-  constructor({ model }) {
+  constructor({ model, engine = 'webrtc' }) {
     super();
     this.model = model;
+    this.engine = engine;
     this.connected = false;
   }
 
   async connect() {
     this.connected = true;
-    this.dispatchEvent(new CustomEvent('connected', { detail: { model: this.model } }));
+    this.dispatchEvent(new CustomEvent('connected', { detail: { model: this.model, engine: this.engine } }));
     window.setTimeout(async () => {
       if (!this.connected) return;
       await playMockVoice();
@@ -66,6 +67,7 @@ export class OpenAIWebRTCTransport extends EventTarget {
   constructor({ model, audioElement }) {
     super();
     this.model = model;
+    this.engine = 'webrtc';
     this.audioElement = audioElement;
     this.pc = undefined;
     this.dc = undefined;
@@ -336,7 +338,7 @@ Be concise.`,
     if (!answerResponse.ok) throw new Error(await answerResponse.text());
     const answer = { type: 'answer', sdp: await answerResponse.text() };
     await this.pc.setRemoteDescription(answer);
-    this.dispatchEvent(new CustomEvent('connected', { detail: { model: this.model } }));
+    this.dispatchEvent(new CustomEvent('connected', { detail: { model: this.model, engine: this.engine } }));
   }
 
   handleEvent(raw) {
@@ -443,7 +445,281 @@ Use this only as visual grounding for the current or immediately preceding user 
   }
 }
 
-export function createRealtimeTransport({ mode, model, audioElement }) {
+const WEBSOCKET_AUDIO_SAMPLE_RATE = 24000;
+const SPEECH_THRESHOLD = 0.02;
+const SPEECH_COMMIT_SILENCE_MS = 700;
+
+// Unlike WebRTC, a Realtime WebSocket does not provide browser media tracks.
+// This transport therefore owns PCM conversion and playback so audio can share
+// the same ordered, observable event stream as text and canvas context.
+function floatToPcm16Base64(samples, sourceSampleRate) {
+  const ratio = sourceSampleRate / WEBSOCKET_AUDIO_SAMPLE_RATE;
+  const outputLength = Math.max(1, Math.floor(samples.length / ratio));
+  const bytes = new Uint8Array(outputLength * 2);
+  const view = new DataView(bytes.buffer);
+  for (let i = 0; i < outputLength; i += 1) {
+    const sourceIndex = Math.min(samples.length - 1, Math.floor(i * ratio));
+    const value = Math.max(-1, Math.min(1, samples[sourceIndex]));
+    view.setInt16(i * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+  }
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function pcm16Base64ToFloat32(base64) {
+  const binary = atob(base64);
+  const view = new DataView(new ArrayBuffer(binary.length));
+  const bytes = new Uint8Array(view.buffer);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const output = new Float32Array(Math.floor(binary.length / 2));
+  for (let i = 0; i < output.length; i += 1) output[i] = view.getInt16(i * 2, true) / 0x8000;
+  return output;
+}
+
+export class OpenAIWebSocketTransport extends OpenAIWebRTCTransport {
+  constructor({ model, audioElement, voice }) {
+    super({ model, audioElement });
+    this.engine = 'websocket';
+    this.voice = voice;
+    this.socket = undefined;
+    this.audioContext = undefined;
+    this.inputNode = undefined;
+    this.processorNode = undefined;
+    this.silentGain = undefined;
+    this.activeAudioTurn = undefined;
+    this.audioTurnContextSent = false;
+    this.lastSpeechAt = 0;
+    this.latestContext = {};
+    this.turnSequence = 0;
+    this.nextPlaybackTime = 0;
+    this.disconnectedEmitted = false;
+    this.mediaStopped = false;
+  }
+
+  nextTurnId() {
+    this.turnSequence += 1;
+    return `turn-${Date.now()}-${this.turnSequence}`;
+  }
+
+  sendSocketEvent(event) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    this.socket.send(JSON.stringify(event));
+    return true;
+  }
+
+  sendGroupedTurn(turnId, context, events) {
+    // `app.turn` is an application-only envelope. It lets the proxy and tests
+    // prove which context belonged to an utterance; the proxy strips it before
+    // OpenAI sees the enclosed protocol events.
+    return this.sendSocketEvent({ type: 'app.turn', turn_id: turnId, context, events });
+  }
+
+  async connect() {
+    const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${scheme}//${window.location.host}/api/realtime/ws?model=${encodeURIComponent(this.model)}`;
+    this.socket = new WebSocket(url);
+    this.socket.addEventListener('message', (event) => this.handleWebSocketEvent(event.data));
+    this.socket.addEventListener('close', () => {
+      this.stopMedia();
+      this.emitDisconnected();
+    });
+    await new Promise((resolve, reject) => {
+      this.socket.addEventListener('open', resolve, { once: true });
+      this.socket.addEventListener('error', () => reject(new Error('WebSocket connection failed')), { once: true });
+    });
+    this.dc = {
+      readyState: 'open',
+      send: (raw) => this.socket.send(raw),
+      close() {},
+    };
+
+    const sessionUpdate = this.buildSessionUpdateEvent();
+    sessionUpdate.session.audio = {
+      input: {
+        format: { type: 'audio/pcm', rate: WEBSOCKET_AUDIO_SAMPLE_RATE },
+        // Client-side silence detection gives the application one explicit commit
+        // point for each turn. Server VAD would commit independently and weaken
+        // the guarantee that the selected canvas context belongs to that audio.
+        turn_detection: null,
+      },
+      output: {
+        format: { type: 'audio/pcm', rate: WEBSOCKET_AUDIO_SAMPLE_RATE },
+        voice: this.voice,
+      },
+    };
+    this.sendSocketEvent(sessionUpdate);
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'session.instructions.sent' } }));
+    await this.startMicrophone();
+    this.dispatchEvent(new CustomEvent('connected', { detail: { model: this.model, engine: this.engine } }));
+  }
+
+  async startMicrophone() {
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    this.audioContext = new AudioCtor();
+    if (!this.audioContext.createMediaStreamSource || !this.audioContext.createScriptProcessor) return;
+    if (this.audioContext.resume) await this.audioContext.resume();
+    this.inputNode = this.audioContext.createMediaStreamSource(this.stream);
+    this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+    this.silentGain = this.audioContext.createGain();
+    this.silentGain.gain.value = 0;
+    this.processorNode.onaudioprocess = (event) => this.processMicrophoneBuffer(event.inputBuffer.getChannelData(0));
+    this.inputNode.connect(this.processorNode);
+    this.processorNode.connect(this.silentGain);
+    // Browsers may suspend an unconnected processing graph. A zero-gain output
+    // keeps microphone processing alive without feeding the microphone to speakers.
+    this.silentGain.connect(this.audioContext.destination);
+  }
+
+  processMicrophoneBuffer(samples) {
+    let peak = 0;
+    for (let i = 0; i < samples.length; i += 1) peak = Math.max(peak, Math.abs(samples[i]));
+    const now = performance.now();
+    if (peak >= SPEECH_THRESHOLD) this.lastSpeechAt = now;
+    // Do not create turns from room noise. Once speech starts, preserve trailing
+    // silence long enough to establish a deliberate end-of-turn boundary.
+    if (!this.activeAudioTurn && peak < SPEECH_THRESHOLD) return;
+    this.sendAudioChunk(floatToPcm16Base64(samples, this.audioContext.sampleRate));
+    if (this.activeAudioTurn && this.lastSpeechAt > 0 && now - this.lastSpeechAt >= SPEECH_COMMIT_SILENCE_MS) {
+      this.commitAudioTurn();
+    }
+  }
+
+  sendAudioChunk(audio) {
+    if (!this.activeAudioTurn) {
+      this.activeAudioTurn = this.nextTurnId();
+      this.audioTurnContextSent = false;
+    }
+    const events = [];
+    if (!this.audioTurnContextSent) {
+      // Context must precede the first audio chunk. Sending it later would leave
+      // association to network timing, which is the ambiguity this engine exists
+      // to remove.
+      const summary = this.latestContext.screen_summary || 'No canvas summary is available.';
+      events.push({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: `turn_id=${this.activeAudioTurn}\nscreen_summary: ${summary}\nUse this as context for the following audio in the same turn.` }],
+        },
+      });
+      this.audioTurnContextSent = true;
+    }
+    events.push({ type: 'input_audio_buffer.append', audio });
+    this.sendGroupedTurn(this.activeAudioTurn, { ...this.latestContext }, events);
+  }
+
+  commitAudioTurn() {
+    if (!this.activeAudioTurn) return;
+    const turnId = this.activeAudioTurn;
+    this.sendGroupedTurn(turnId, { ...this.latestContext }, [
+      { type: 'input_audio_buffer.commit' },
+      { type: 'response.create' },
+    ]);
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'audio_turn.committed', turn_id: turnId } }));
+    this.activeAudioTurn = undefined;
+    this.audioTurnContextSent = false;
+    this.lastSpeechAt = 0;
+  }
+
+  async sendSceneSummary(summary) {
+    this.latestContext = { screen_summary: summary };
+    const turnId = this.activeAudioTurn || this.nextTurnId();
+    const events = [{
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: `turn_id=${turnId}\nscreen_summary: ${summary}\nUse this visual context for this turn. Do not greet.` }],
+      },
+    }];
+    // During speech, update the current turn without requesting a competing
+    // response. Outside speech, a canvas change remains a standalone user turn.
+    if (!this.activeAudioTurn) events.push({ type: 'response.create' });
+    this.sendGroupedTurn(turnId, { ...this.latestContext }, events);
+    if (this.activeAudioTurn) this.audioTurnContextSent = true;
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_summary.sent', summary, turn_id: turnId } }));
+  }
+
+  async sendSceneImage(imageDataUrl) {
+    this.latestContext = { canvas_image: true };
+    const turnId = this.activeAudioTurn || this.nextTurnId();
+    const events = [{
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: `turn_id=${turnId}\nThe attached canvas image is visual context for this turn. Do not greet.` },
+          { type: 'input_image', image_url: imageDataUrl },
+        ],
+      },
+    }];
+    if (!this.activeAudioTurn) events.push({ type: 'response.create' });
+    this.sendGroupedTurn(turnId, { ...this.latestContext }, events);
+    if (this.activeAudioTurn) this.audioTurnContextSent = true;
+    this.dispatchEvent(new CustomEvent('client_event', { detail: { type: 'scene_image.sent', turn_id: turnId } }));
+  }
+
+  handleWebSocketEvent(raw) {
+    let event;
+    try { event = JSON.parse(raw); } catch { return; }
+    if (event.type === 'response.output_audio.delta' && event.delta) this.playAudioDelta(event.delta);
+    this.handleEvent(raw);
+  }
+
+  playAudioDelta(base64) {
+    if (!this.audioContext?.createBuffer || !this.audioContext?.createBufferSource) return;
+    const samples = pcm16Base64ToFloat32(base64);
+    const buffer = this.audioContext.createBuffer(1, samples.length, WEBSOCKET_AUDIO_SAMPLE_RATE);
+    buffer.copyToChannel(samples, 0);
+    const source = this.audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.audioContext.destination);
+    // Each delta is a separate buffer. Schedule after the previous delta so
+    // variable network timing cannot create gaps or overlapping speech.
+    const startAt = Math.max(this.audioContext.currentTime, this.nextPlaybackTime);
+    source.start(startAt);
+    this.nextPlaybackTime = startAt + buffer.duration;
+  }
+
+  emitDisconnected() {
+    if (this.disconnectedEmitted) return;
+    this.disconnectedEmitted = true;
+    this.dispatchEvent(new CustomEvent('disconnected'));
+  }
+
+  stopMedia() {
+    if (this.mediaStopped) return;
+    this.mediaStopped = true;
+    if (this.processorNode) this.processorNode.onaudioprocess = null;
+    // Upstream errors close the socket asynchronously. Stop capture here as well
+    // as on the Stop button, otherwise the dead session keeps producing turns.
+    this.processorNode?.disconnect?.();
+    this.inputNode?.disconnect?.();
+    this.silentGain?.disconnect?.();
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.audioContext?.close?.();
+    this.activeAudioTurn = undefined;
+    this.audioTurnContextSent = false;
+  }
+
+  async disconnect() {
+    this.stopMedia();
+    if (this.socket?.readyState === WebSocket.OPEN) this.socket.close();
+    else this.emitDisconnected();
+  }
+}
+
+export function createRealtimeTransport({ mode, model, audioElement, engine = 'webrtc', voice }) {
+  // Keep engine selection at one boundary so the UI and canvas loop depend on a
+  // transport contract, not on WebRTC or WebSocket implementation details.
+  if (mode === 'live' && engine === 'websocket') {
+    return new OpenAIWebSocketTransport({ model, audioElement, voice });
+  }
   if (mode === 'live') return new OpenAIWebRTCTransport({ model, audioElement });
-  return new MockRealtimeTransport({ model });
+  return new MockRealtimeTransport({ model, engine });
 }

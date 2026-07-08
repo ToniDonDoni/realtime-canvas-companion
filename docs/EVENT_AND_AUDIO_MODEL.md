@@ -25,6 +25,41 @@ it.
 In other words: the log means "an event has arrived"; it does not mean "this text
 is the audio that is currently coming out of the speakers."
 
+## Selectable transport model
+
+The live app now has two engines behind the same application event interface.
+
+`webrtc` keeps the original split transport: microphone and assistant speech use
+media tracks while JSON events use the data channel. It remains the default.
+
+`websocket` sends both control events and 24 kHz PCM16 audio through the
+application server. The browser wraps related protocol events in an `app.turn`
+envelope containing a generated `turn_id`, a context snapshot, and an ordered
+event list. The server removes the application envelope, assigns correlated
+OpenAI `event_id` values, forwards the protocol events in order, and returns an
+`app.turn.forwarded` diagnostic event. The OpenAI API key is present only on the
+server-to-OpenAI connection.
+
+```text
+browser microphone PCM
+  -> detect speech and open turn-N
+  -> capture latest canvas context for turn-N
+  -> conversation.item.create(context)
+  -> input_audio_buffer.append(...)
+  -> input_audio_buffer.append(...)
+  -> detect silence
+  -> input_audio_buffer.commit
+  -> response.create
+  -> backend expands app.turn envelopes in order
+  -> OpenAI Realtime WebSocket
+  -> response.output_audio.delta
+  -> browser Web Audio playback queue
+```
+
+This makes application-level association observable and testable. It does not
+make the OpenAI protocol transactional: delivery still uses an ordered WebSocket
+stream, and a disconnect can interrupt a turn between events.
+
 ## Current scene update pipeline
 
 The image itself does **not** go into the Realtime WebRTC session. The browser
@@ -267,7 +302,7 @@ This is simplest, but it can let the event log get ahead of the audible output.
     can be inspected during live testing.
 
 - `src/realtime.js`
-  - contains the mock Realtime transport and the live OpenAI WebRTC transport;
+  - contains the mock, OpenAI WebRTC, and OpenAI WebSocket transports;
   - opens `RTCPeerConnection`;
   - attaches the microphone audio track;
   - receives the assistant audio track;
@@ -286,6 +321,7 @@ This is simplest, but it can let the event log get ahead of the audible output.
   - serves the SPA;
   - exposes `/api/config`;
   - creates the OpenAI Realtime WebRTC call from the browser SDP offer;
+  - proxies grouped browser events to the authenticated OpenAI Realtime WebSocket;
   - accepts canvas PNG data URLs and calls the selected vision model.
 
 ## Model configuration

@@ -58,3 +58,12 @@
 2. RED: Assert image context mode sends a final Realtime payload no larger than 80% of the negotiated message size.
 3. GREEN: Expose the transport image target from `pc.sctp.maxMessageSize` and compress/downscale canvas JPEG frames against that target.
 4. GREEN: Bump the app version and visible version test expectations.
+
+## Task FR-018 Selectable WebSocket realtime engine
+
+1. [x] ARCHITECTURE: Define interchangeable transports, server-owned authentication, and application-owned turn grouping.
+2. [x] RED: Add a browser E2E test for the engine selector and contextual `app.turn` envelope.
+3. [x] RED: Add a real local WebSocket integration test with a mock OpenAI upstream.
+4. [x] GREEN: Implement the backend WebSocket proxy and ordered event correlation.
+5. [x] GREEN: Implement browser PCM16 microphone capture, silence commit, response audio playback, and UI transport selection.
+6. [x] REGRESSION: Run the complete integration and Playwright suites.

@@ -32,3 +32,12 @@ FR-011 GREEN: Implemented paste handler and aspect-fit canvas replacement.
 FR-017 ADDITION captured: image context mode must size frames from WebRTC SCTP maxMessageSize using an 80% envelope, with tests and version bump.
 FR-017 RED: Fake WebRTC now enforces max-message-size and image mode test asserts the final Realtime payload fits the 80% envelope.
 FR-017 GREEN: Realtime transport exposes image target bytes from pc.sctp.maxMessageSize, canvas capture adapts JPEG quality/dimensions, and app version bumped to 0.2.6.
+2026-07-08 FR-018 ARCHITECTURE: Defined selectable WebRTC/WebSocket engines, backend-owned OpenAI authentication, and explicit turn_id/context grouping.
+2026-07-08 FR-018 RED: Added Playwright selector/grouping coverage and a local app-proxy-to-mock-OpenAI WebSocket integration test before implementation.
+2026-07-08 FR-018 GREEN: Implemented WebSocket proxy, ordered correlated event forwarding, browser PCM16 capture/playback, context snapshots, engine selector, and version 0.3.0.
+2026-07-08 FR-018 REGRESSION: npm test passed: 1 local WebSocket integration test and 15 Playwright browser E2E tests.
+2026-07-08 FR-018 BUGFIX RED: Live OpenAI rejected the obsolete OpenAI-Beta realtime=v1 header and closed the socket; remote close also left microphone processing active. Added mock-upstream header and browser cleanup assertions first.
+2026-07-08 FR-018 BUGFIX GREEN: Removed the beta header for the GA /v1/realtime endpoint, stopped microphone resources on remote close, and bumped version to 0.3.1.
+2026-07-08 FR-018 BUGFIX REGRESSION: npm test passed on 0.3.1: 1 mock-upstream integration test and 15 Playwright E2E tests, including WebRTC regression coverage.
+2026-07-08 FR-018 LOGGING RED/GREEN: Added a mock logger assertion, moved high-frequency forwarded-turn logs behind VERBOSE_LOGS=1, retained connection/error lifecycle logs, and bumped version to 0.3.2.
+2026-07-08 FR-018 LOGGING REGRESSION: Integration passed and all 15 Playwright tests passed against an isolated mock server; the first default-port attempt reused a separately running live 0.3.1 server and was discarded as invalid test environment evidence.
