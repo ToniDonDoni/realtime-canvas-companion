@@ -247,7 +247,9 @@ export function attachRealtimeWebSocketServer(server, {
 
     const upstreamUrl = new URL(upstreamWebSocketUrl);
     upstreamUrl.searchParams.set('model', model);
-    logger.log(`[realtime/ws] connecting model=${model} upstream=${upstreamUrl.origin}${upstreamUrl.pathname}`);
+    if (verbose) {
+      logger.log(`[realtime/ws] connecting model=${model} upstream=${upstreamUrl.origin}${upstreamUrl.pathname}`);
+    }
     // Authentication exists only on this server-to-OpenAI hop. The GA Realtime
     // endpoint must not receive the retired `OpenAI-Beta: realtime=v1` header.
     const upstream = new WebSocket(upstreamUrl, {
@@ -264,7 +266,7 @@ export function attachRealtimeWebSocketServer(server, {
     const turnEventCounts = new Map();
 
     upstream.on('open', () => {
-      logger.log(`[realtime/ws] OpenAI connected model=${model}`);
+      if (verbose) logger.log(`[realtime/ws] OpenAI connected model=${model}`);
       for (const raw of pendingBrowserMessages.splice(0)) upstream.send(raw);
     });
     upstream.on('message', (raw) => {
@@ -275,7 +277,7 @@ export function attachRealtimeWebSocketServer(server, {
       safeSend(browserSocket, { type: 'error', error: { message: error.message } });
     });
     upstream.on('close', (code, reason) => {
-      logger.log(`[realtime/ws] OpenAI closed code=${code} reason=${reason.toString()}`);
+      if (verbose) logger.log(`[realtime/ws] OpenAI closed code=${code} reason=${reason.toString()}`);
       if (browserSocket.readyState === WebSocket.OPEN) browserSocket.close(1011, 'upstream closed');
     });
 

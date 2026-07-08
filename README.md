@@ -100,9 +100,10 @@ Browser controls -> app state -> realtime transport
 Use WebSocket when explicit turn/context correlation and server-side observability
 matter more than WebRTC's built-in media handling.
 
-Per-turn WebSocket forwarding logs are disabled by default because audio chunks
-are high-frequency. Set `VERBOSE_LOGS=1` only when individual forwarded event
-groups are needed for protocol diagnostics.
+Realtime WebSocket lifecycle and forwarding logs are disabled by default because
+audio events are high-frequency. Set `VERBOSE_LOGS=1` when connection lifecycle
+and individual forwarded groups are needed for protocol diagnostics. Configuration,
+listening port, and errors remain visible without verbose logging.
 
 ## Canvas context modes
 

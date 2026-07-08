@@ -81,7 +81,7 @@ test('WebSocket proxy forwards one contextual turn in order and relays the group
   assert.match(upstreamEvents[0].item.content[0].text, /screen_summary: A red square/);
   await assertEventually(() => received.some((event) => event.type === 'app.turn.forwarded'));
   await assertEventually(() => received.some((event) => event.transcript === 'Grouped response for turn-1'));
-  assert.equal(serverLogs.some((message) => message.includes('forwarded turn=')), false);
+  assert.deepEqual(serverLogs, []);
 });
 
 async function assertEventually(predicate, timeoutMs = 2000) {

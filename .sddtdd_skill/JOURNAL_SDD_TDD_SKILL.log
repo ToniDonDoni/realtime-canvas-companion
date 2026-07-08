@@ -41,3 +41,4 @@ FR-017 GREEN: Realtime transport exposes image target bytes from pc.sctp.maxMess
 2026-07-08 FR-018 BUGFIX REGRESSION: npm test passed on 0.3.1: 1 mock-upstream integration test and 15 Playwright E2E tests, including WebRTC regression coverage.
 2026-07-08 FR-018 LOGGING RED/GREEN: Added a mock logger assertion, moved high-frequency forwarded-turn logs behind VERBOSE_LOGS=1, retained connection/error lifecycle logs, and bumped version to 0.3.2.
 2026-07-08 FR-018 LOGGING REGRESSION: Integration passed and all 15 Playwright tests passed against an isolated mock server; the first default-port attempt reused a separately running live 0.3.1 server and was discarded as invalid test environment evidence.
+2026-07-08 FR-018 LIFECYCLE LOGGING: Added a RED assertion for zero Realtime stdout at verbose=false, gated connecting/connected/closed behind VERBOSE_LOGS=1, retained config/port stdout and error stderr, and bumped version to 0.3.3.

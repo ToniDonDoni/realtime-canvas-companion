@@ -58,8 +58,8 @@ test('AC-FR001-1 visible controls are available on first load', async ({ page })
   await expect(page.getByRole('button', { name: 'Call' })).toBeVisible();
   await expect(page.getByLabel('Drawing canvas')).toBeVisible();
   await expect(page.getByText('mode: mock')).toBeVisible();
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.2');
-  await expect(page.getByRole('list')).toContainText('app version: 0.3.2');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.3');
+  await expect(page.getByRole('list')).toContainText('app version: 0.3.3');
   await expect(page.getByRole('list')).toContainText('app ready');
   await expectTimestampedLogEntry(page.locator('#eventLog li').first(), 'app ready');
   await expect(page.locator('#eventLog')).toHaveCSS('list-style-type', 'none');
@@ -96,7 +96,7 @@ test('AC-FR018 WebSocket engine selector creates grouped contextual turns', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini'],
         realtimeTransports: ['webrtc', 'websocket'],
         defaultRealtimeTransport: 'webrtc',
@@ -320,8 +320,8 @@ test('AC-FR012 app version is visible on screen and in the event log', async ({ 
   await installBrowserAudioInstrumentation(page);
   await page.goto('/');
 
-  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.2');
-  await expect(page.getByRole('list')).toContainText('app version: 0.3.2');
+  await expect(page.locator('#versionBadge')).toHaveText('version: 0.3.3');
+  await expect(page.getByRole('list')).toContainText('app version: 0.3.3');
 });
 
 async function installFakeWebRTC(page) {
@@ -382,7 +382,7 @@ test('AC-FR009 realtime model selector is used when opening a live WebRTC sessio
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -418,7 +418,7 @@ test('AC-FR014 Realtime server events are visible in the event log', async ({ pa
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -469,7 +469,7 @@ test('AC-FR010 vision model selector is used for canvas describe requests', asyn
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'mock',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
@@ -587,7 +587,7 @@ test('AC-FR016 image context mode sends canvas snapshots directly over Realtime 
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         canvasContextModes: ['summary', 'image'],
@@ -668,7 +668,7 @@ test('AC-FR015 companion paw cursor is visible, starts centered, and realtime ca
       contentType: 'application/json',
       body: JSON.stringify({
         mode: 'live',
-        version: '0.3.2',
+        version: '0.3.3',
         realtimeModels: ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'],
         visionModels: ['gpt-5.4-nano', 'gpt-5.4-mini'],
         defaultRealtimeModel: 'gpt-realtime-2.1-mini',
